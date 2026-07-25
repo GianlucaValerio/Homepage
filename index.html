@@ -33,14 +33,6 @@ button.pri{background:var(--acc);color:#fff;border-color:var(--acc)}
 button.pri:hover:not(:disabled){background:var(--acc-dk)}
 select,input[type=number],input[type=text]{font-size:13px;padding:5px 9px;border:.5px solid var(--borders);border-radius:var(--r);background:var(--card);color:var(--text)}
 
-/* setup banner */
-.setup{background:var(--amb-bg);border:.5px solid var(--amb);border-radius:12px;padding:16px 18px;margin-bottom:20px}
-.setup h2{font-size:15px;font-weight:500;color:var(--amb);margin-bottom:10px}
-.setup ol{padding-left:18px;font-size:13px;line-height:2}
-.setup code{font-family:monospace;background:rgba(0,0,0,.07);padding:2px 6px;border-radius:4px;font-size:12px}
-.setup input{width:100%;margin-top:8px;font-family:monospace}
-.setup .ok{color:var(--grn);font-weight:500}
-
 /* status bar */
 .sbar{display:flex;align-items:center;gap:10px;background:var(--card);border:.5px solid var(--border);border-radius:var(--r);padding:9px 14px;margin-bottom:16px;font-size:13px;flex-wrap:wrap}
 .dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
@@ -125,38 +117,22 @@ tr:hover td{background:var(--bg)}
 <body>
 <div class="app">
 
-  <!-- ── SETUP BANNER (nascosto dopo configurazione) ── -->
-  <div class="setup" id="setup-banner">
-    <h2>⚙️ Configurazione iniziale — solo una volta</h2>
-    <ol>
-      <li>Vai su <a href="https://dash.cloudflare.com" target="_blank">dash.cloudflare.com</a> → accedi o registrati gratis</li>
-      <li><strong>Workers &amp; Pages</strong> → <strong>Create</strong> → <strong>Create Worker</strong></li>
-      <li>Dai un nome (es. <code>10elotto-proxy</code>), clicca <strong>Deploy</strong></li>
-      <li>Clicca <strong>Edit code</strong> → incolla tutto il contenuto di <code>worker.js</code> → <strong>Deploy</strong></li>
-      <li>Copia l'URL del worker (es. <code>https://10elotto-proxy.tuonome.workers.dev</code>)</li>
-      <li>Incollalo qui sotto e clicca <strong>Salva &amp; Carica</strong></li>
-    </ol>
-    <input type="text" id="proxy-input" placeholder="https://10elotto-proxy.tuonome.workers.dev" style="width:100%;margin-top:8px;font-family:monospace">
-    <button class="pri" onclick="saveProxy()" style="margin-top:8px">✅ Salva &amp; Carica</button>
-  </div>
-
   <!-- ── HEADER ── -->
   <div class="hdr">
     <div>
       <h1>🎯 10eLotto ogni 5 min — Analisi &amp; Backtest</h1>
-      <div class="hdr-sub" id="hdr-sub">Fonte: lottologia.com · auto-refresh ogni 5 min</div>
+      <div class="hdr-sub">Fonte: lottologia.com</div>
     </div>
     <div class="hdr-r">
       <button onclick="toggleDbg()" style="font-size:11px;padding:4px 9px">🐛 Debug</button>
-      <button onclick="resetProxy()" style="font-size:11px;padding:4px 9px">⚙️ Proxy</button>
-      <button class="pri" id="rbtn" onclick="fetchData(true)" disabled>↻ Aggiorna</button>
+      <button class="pri" id="rbtn" onclick="fetchData(true)">↻ Aggiorna</button>
     </div>
   </div>
 
   <!-- ── STATUS ── -->
   <div class="sbar">
     <div class="dot didle" id="sdot"></div>
-    <div class="smsg" id="smsg">Configura il proxy per iniziare</div>
+    <div class="smsg" id="smsg">Premi ↻ Aggiorna per caricare le estrazioni</div>
     <div class="stime" id="stime"></div>
   </div>
   <div class="dbg" id="dbg"></div>
@@ -242,11 +218,9 @@ tr:hover td{background:var(--bg)}
 
 <script>
 /* ── CONFIG ── */
+const PROXY_URL = 'https://delicate-unit-036a.gianluca-valerio1511.workers.dev';
 const TARGET = 'https://lottologia.com/10elotto5minuti/tutte-le-estrazioni';
-const STORAGE_KEY = '10elotto_proxy_url';
-
-let draws = [], N = 5, lastPred = [], cdTimer = null, cdSec = 300, fetching = false;
-let PROXY_URL = '';
+let draws = [], N = 5, lastPred = [], fetching = false;
 
 /* ── PROXY SETUP ── */
 function loadProxy() {
@@ -396,16 +370,6 @@ function setTime(){
   document.getElementById('stime').textContent=
     'agg. '+n.getHours().toString().padStart(2,'0')+':'+n.getMinutes().toString().padStart(2,'0')+':'+n.getSeconds().toString().padStart(2,'0');
 }
-function startCD(){
-  clearInterval(cdTimer); cdSec=310;
-  cdTimer=setInterval(()=>{
-    cdSec--;
-    const m=Math.floor(cdSec/60),s=cdSec%60;
-    document.getElementById('cntd').innerHTML='prossimo: <strong>'+m+':'+s.toString().padStart(2,'0')+'</strong>';
-    if(cdSec<=0){clearInterval(cdTimer);document.getElementById('cntd').innerHTML='';fetchData();}
-  },1000);
-}
-
 /* ── DEBUG ── */
 function dbgLog(msg){
   const el=document.getElementById('dbg');
@@ -670,15 +634,7 @@ function btManual(){
 
 /* ── BOOT ── */
 window.addEventListener('load', () => {
-  const saved = localStorage.getItem(STORAGE_KEY) || '';
-  if (saved) {
-    PROXY_URL = saved.replace(/\/$/, '');
-    document.getElementById('proxy-input').value = PROXY_URL;
-    document.getElementById('setup-banner').style.display = 'none';
-    document.getElementById('rbtn').disabled = false;
-    dbgLog('Proxy caricato. Premi ↻ Aggiorna per caricare i dati.');
-    setStatus('idle', 'Proxy configurato — premi ↻ Aggiorna per caricare le estrazioni');
-  }
+  dbgLog('Pronto. Premi ↻ Aggiorna per caricare le estrazioni.');
 });
 </script>
 </body>
