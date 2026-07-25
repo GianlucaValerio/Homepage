@@ -84,9 +84,7 @@ input[type=range]{accent-color:var(--acc);width:110px;cursor:pointer}
 .nc .cnts{display:flex;justify-content:center;gap:3px}
 .cnt{font-size:10px;font-weight:500;padding:1px 4px;border-radius:3px}
 .cb{background:var(--acc-bg);color:var(--acc-dk)}.ce{background:var(--grn-bg);color:var(--grn)}
-.nc.hb{border-color:var(--acc);background:var(--acc-bg)}
-.nc.he{border-color:var(--grn);background:var(--grn-bg)}
-.nc.hbo{border-color:var(--gld);background:var(--gld-bg)}
+.nc.hot-num{border:2px solid #e53e3e!important}
 
 /* draws */
 .dlst{display:flex;flex-direction:column;gap:7px}
@@ -149,7 +147,6 @@ tr:hover td{background:var(--bg)}
       <div class="hdr-sub" id="hdr-sub">Fonte: lottologia.com · auto-refresh ogni 5 min</div>
     </div>
     <div class="hdr-r">
-      <div class="cntd" id="cntd"></div>
       <button onclick="toggleDbg()" style="font-size:11px;padding:4px 9px">🐛 Debug</button>
       <button onclick="resetProxy()" style="font-size:11px;padding:4px 9px">⚙️ Proxy</button>
       <button class="pri" id="rbtn" onclick="fetchData(true)" disabled>↻ Aggiorna</button>
@@ -177,12 +174,19 @@ tr:hover td{background:var(--bg)}
     <div class="scards" id="scards"></div>
     <div class="tb">
       <label>Finestra: <strong id="nval">5</strong> est.</label>
-      <input type="range" id="nslider" min="1" max="20" value="5" oninput="setN(this.value)">
-      <div class="leg">
-        <div class="li"><div class="ls" style="background:var(--acc)"></div>Base (20)</div>
-        <div class="li"><div class="ls" style="background:var(--grn)"></div>Extra (15)</div>
-        <div class="li"><div class="ls" style="background:var(--gld);height:10px;width:10px;border-radius:2px"></div>Hot entrambi</div>
-      </div>
+      <input type="range" id="nslider" min="1" max="50" value="5" oninput="setN(this.value)">
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px;background:var(--card);border:.5px solid var(--borders);border-radius:var(--r);padding:5px 10px;cursor:pointer">
+        <input type="checkbox" id="extra-mode" onchange="renderFreq()">
+        Priorità Extra
+      </label>
+      <label>Palette:
+        <select id="palette-sel" onchange="renderFreq()">
+          <option value="ember">🔴 Ember — rosso/arancio</option>
+          <option value="inferno">🟠 Inferno — giallo/oro</option>
+          <option value="magma">🟣 Magma — viola/fucsia</option>
+        </select>
+      </label>
+      <div class="leg" id="palette-leg"></div>
     </div>
     <div class="ngrid" id="ngrid"></div>
   </div>
@@ -311,7 +315,6 @@ async function fetchData(manual = false) {
     setStatus('ok', draws.length + ' estrazioni · ultima #' + d.id + ' ore ' + d.time + ' (' + d.date + ')');
     setTime();
     render();
-    startCD();
 
   } catch(e) {
     dbgLog('ERRORE: ' + e.message);
@@ -451,20 +454,124 @@ function getCounts(n){
 function renderFreq(){
   if(!draws.length)return;
   const{bc,ec}=getCounts(N);
-  const maxB=Math.max(...Object.values(bc));
-  const maxE=Math.max(...Object.values(ec));
-  const maxT=Math.max(...Array.from({length:90},(_,i)=>bc[i+1]+ec[i+1]));
+  const extraMode=document.getElementById('extra-mode').checked;
+  const palName=document.getElementById('palette-sel').value;
+
+  // Punteggio ponderato
+  const wB=extraMode?1:2, wE=extraMode?2:1;
+  const scores={};
+  let maxScore=0;
+  for(let i=1;i<=90;i++){
+    scores[i]=bc[i]*wB+ec[i]*wE;
+    if(scores[i]>maxScore) maxScore=scores[i];
+  }
+  const hotNum=Object.entries(scores).sort((a,b)=>b[1]-a[1])[0][0]*1;
+
+  // ── Palette definitions ──
+  // Logica: t=0 → quasi trasparente/chiaro, t=1 → scuro saturo
+  // Ogni palette: array di stop [t, [r,g,b], alpha]
+  const PALETTES={
+    ember:{
+      name:'Ember',
+      grad:'linear-gradient(to right,rgba(255,200,150,0.15),#c0501a,#8b1a0a)',
+      hotGlow:'rgba(200,40,20,0.8)',
+      stops:[
+        [0,   [255,210,180], 0.12],
+        [0.2, [230,140, 80], 0.35],
+        [0.45,[200, 80, 30], 0.65],
+        [0.7, [160, 35, 10], 0.85],
+        [1.0, [120, 15,  5], 1.00],
+      ]
+    },
+    inferno:{
+      name:'Inferno',
+      grad:'linear-gradient(to right,rgba(255,240,180,0.15),#c08010,#7a4000)',
+      hotGlow:'rgba(180,100,0,0.8)',
+      stops:[
+        [0,   [255,245,200], 0.12],
+        [0.2, [240,190, 60], 0.35],
+        [0.45,[200,130, 10], 0.65],
+        [0.7, [150, 80,  0], 0.85],
+        [1.0, [ 90, 40,  0], 1.00],
+      ]
+    },
+    magma:{
+      name:'Magma',
+      grad:'linear-gradient(to right,rgba(230,200,255,0.15),#8b20a0,#3d0060)',
+      hotGlow:'rgba(140,20,180,0.8)',
+      stops:[
+        [0,   [240,210,255], 0.12],
+        [0.2, [190,100,230], 0.35],
+        [0.45,[140, 40,190], 0.65],
+        [0.7, [ 90, 10,150], 0.85],
+        [1.0, [ 50,  0,100], 1.00],
+      ]
+    }
+  };
+
+  const pal=PALETTES[palName]||PALETTES.ember;
+
+  // Aggiorna legenda
+  document.getElementById('palette-leg').innerHTML=`
+    <div class="li">
+      <div style="width:80px;height:10px;border-radius:3px;background:${pal.grad}"></div>
+      raro → frequente
+    </div>
+    <div class="li">
+      <div class="ls" style="width:14px;height:14px;border-radius:3px;background:${pal.stops[4][0]===1?`rgb(${pal.stops[4][1].join(',')})`:''};background:${`rgb(${pal.stops[3][1].join(',')})`};box-shadow:0 0 6px 2px ${pal.hotGlow}"></div>
+      🔥 più frequente
+    </div>`;
+
+  function interpolate(stops, t){
+    for(let s=0;s<stops.length-1;s++){
+      const [t0,c0,a0]=stops[s],[t1,c1,a1]=stops[s+1];
+      if(t>=t0&&t<=t1){
+        const f=(t-t0)/(t1-t0);
+        return{
+          r:Math.round(c0[0]+(c1[0]-c0[0])*f),
+          g:Math.round(c0[1]+(c1[1]-c0[1])*f),
+          b:Math.round(c0[2]+(c1[2]-c0[2])*f),
+          a:+(a0+(a1-a0)*f).toFixed(3)
+        };
+      }
+    }
+    const [,c,a]=stops[stops.length-1];
+    return{r:c[0],g:c[1],b:c[2],a};
+  }
+
+  const maxB=Math.max(...Object.values(bc))||1;
+  const maxE=Math.max(...Object.values(ec))||1;
+
   const g=document.getElementById('ngrid');g.innerHTML='';
   for(let i=1;i<=90;i++){
-    const b=bc[i],e=ec[i],t=b+e;
-    const hB=b===maxB&&maxB>0,hE=e===maxE&&maxE>0,hBO=t===maxT&&maxT>0&&b>0&&e>0;
-    let cls='nc';if(hBO)cls+=' hbo';else if(hB)cls+=' hb';else if(hE)cls+=' he';
-    const bw=maxB?Math.max(2,Math.round(b/maxB*28)):2;
-    const ew=maxE?Math.max(2,Math.round(e/maxE*28)):2;
-    const el=document.createElement('div');el.className=cls;
-    el.innerHTML=`<div class="n">${i}</div>
-      <div class="bars"><div class="bar bb" style="width:${bw}px"></div><div class="bar be" style="width:${ew}px"></div></div>
-      <div class="cnts"><span class="cnt cb">B:${b}</span><span class="cnt ce">E:${e}</span></div>`;
+    const b=bc[i],e=ec[i];
+    const t=maxScore>0?scores[i]/maxScore:0;
+    const{r,g:gr,b:bl,a}=interpolate(pal.stops,t);
+    const isHot=i===hotNum&&maxScore>0;
+
+    // testo: bianco pieno se scuro/opaco, grigio chiaro se trasparente
+    const textOpacity=Math.max(0.4,Math.min(1, a*1.4+0.2));
+    const textColor=`rgba(255,255,255,${textOpacity})`;
+    const badgeColor=`rgba(255,255,255,${Math.max(0.1,a*0.5)})`;
+    const barOpacity=Math.max(0.2,a);
+
+    const el=document.createElement('div');
+    el.className='nc'+(isHot?' hot-num':'');
+    el.style.cssText=`
+      background:rgba(${r},${gr},${bl},${a});
+      border-color:${isHot?'rgba(255,255,255,0.9)':`rgba(255,255,255,${Math.max(0.04,a*0.25)})`};
+      ${isHot?`box-shadow:0 0 14px 4px ${pal.hotGlow};`:''}
+    `;
+    el.innerHTML=`
+      <div class="n" style="color:${isHot?'#fff':textColor};font-weight:${t>0.6?700:500}">${i}${isHot?' 🔥':''}</div>
+      <div class="bars">
+        <div class="bar bb" style="width:${Math.max(2,Math.round(b/maxB*28))}px;opacity:${barOpacity}"></div>
+        <div class="bar be" style="width:${Math.max(2,Math.round(e/maxE*28))}px;opacity:${barOpacity}"></div>
+      </div>
+      <div class="cnts">
+        <span class="cnt" style="background:${badgeColor};color:${textColor}">B:${b}</span>
+        <span class="cnt" style="background:${badgeColor};color:${textColor}">E:${e}</span>
+      </div>`;
     g.appendChild(el);
   }
 }
@@ -562,7 +669,17 @@ function btManual(){
 }
 
 /* ── BOOT ── */
-window.addEventListener('load', loadProxy);
+window.addEventListener('load', () => {
+  const saved = localStorage.getItem(STORAGE_KEY) || '';
+  if (saved) {
+    PROXY_URL = saved.replace(/\/$/, '');
+    document.getElementById('proxy-input').value = PROXY_URL;
+    document.getElementById('setup-banner').style.display = 'none';
+    document.getElementById('rbtn').disabled = false;
+    dbgLog('Proxy caricato. Premi ↻ Aggiorna per caricare i dati.');
+    setStatus('idle', 'Proxy configurato — premi ↻ Aggiorna per caricare le estrazioni');
+  }
+});
 </script>
 </body>
 </html>
