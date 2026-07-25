@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>10eLotto — Analisi & Backtest</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg:#f7f7f5; --card:#fff; --border:rgba(0,0,0,.09); --borders:rgba(0,0,0,.17);
+  --text:#0b0b0b; --muted:#696966;
+  --acc:#2a78d6; --acc-bg:#e6f1fb; --acc-dk:#185fa5;
+  --grn:#1a9e6e; --grn-bg:#e4f5ed;
+  --amb:#b07010; --amb-bg:#fdf3d8;
+  --red:#b03030; --red-bg:#fdeaea;
+  --gld:#b08000; --gld-bg:#fff5cc;
+  --r:8px;
+}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);font-size:15px;line-height:1.6}
+.app{max-width:1080px;margin:0 auto;padding:20px 14px 80px}
+
+/* header */
+.hdr{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:18px;flex-wrap:wrap}
+.hdr h1{font-size:20px;font-weight:500}
+.hdr-sub{font-size:12px;color:var(--muted);margin-top:2px}
+.hdr-r{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+
+/* buttons / inputs */
+button{font-size:13px;padding:6px 14px;border:.5px solid var(--borders);border-radius:var(--r);background:var(--card);color:var(--text);cursor:pointer}
+button:hover:not(:disabled){background:var(--bg)}
+button:disabled{opacity:.4;cursor:default}
+button.pri{background:var(--acc);color:#fff;border-color:var(--acc)}
+button.pri:hover:not(:disabled){background:var(--acc-dk)}
+select,input[type=number],input[type=text]{font-size:13px;padding:5px 9px;border:.5px solid var(--borders);border-radius:var(--r);background:var(--card);color:var(--text)}
+
+/* setup banner */
+.setup{background:var(--amb-bg);border:.5px solid var(--amb);border-radius:12px;padding:16px 18px;margin-bottom:20px}
+.setup h2{font-size:15px;font-weight:500;color:var(--amb);margin-bottom:10px}
+.setup ol{padding-left:18px;font-size:13px;line-height:2}
+.setup code{font-family:monospace;background:rgba(0,0,0,.07);padding:2px 6px;border-radius:4px;font-size:12px}
+.setup input{width:100%;margin-top:8px;font-family:monospace}
+.setup .ok{color:var(--grn);font-weight:500}
+
+/* status bar */
+.sbar{display:flex;align-items:center;gap:10px;background:var(--card);border:.5px solid var(--border);border-radius:var(--r);padding:9px 14px;margin-bottom:16px;font-size:13px;flex-wrap:wrap}
+.dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+.dok{background:#22c55e}.dwrn{background:#f59e0b;animation:pulse 1s infinite}.derr{background:#ef4444}.didle{background:var(--muted)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.smsg{color:var(--muted);flex:1;min-width:0}
+.stime{font-size:11px;color:var(--muted);white-space:nowrap}
+.cntd{font-size:12px;color:var(--muted);white-space:nowrap}
+.cntd strong{color:var(--acc);font-size:13px}
+
+/* debug */
+.dbg{font-size:11px;font-family:monospace;background:#111;color:#7fff7f;padding:10px;border-radius:var(--r);margin-bottom:12px;max-height:130px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;display:none}
+
+/* tabs */
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--border);margin-bottom:18px;overflow-x:auto}
+.tab{padding:8px 16px;font-size:14px;border:none;background:none;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap}
+.tab.on{color:var(--acc);border-bottom-color:var(--acc);font-weight:500}
+.pane{display:none}.pane.on{display:block}
+
+/* stat cards */
+.scards{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:8px;margin-bottom:18px}
+.sc{background:var(--card);border:.5px solid var(--border);border-radius:var(--r);padding:11px 13px}
+.sc .lb{font-size:11px;color:var(--muted);margin-bottom:3px}
+.sc .vl{font-size:21px;font-weight:500}
+
+/* toolbar */
+.tb{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.tb label{font-size:13px;color:var(--muted)}
+input[type=range]{accent-color:var(--acc);width:110px;cursor:pointer}
+.leg{display:flex;gap:12px;flex-wrap:wrap}
+.li{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--muted)}
+.ls{width:12px;height:5px;border-radius:2px}
+
+/* number grid */
+.ngrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(68px,1fr));gap:5px;margin-bottom:18px}
+.nc{background:var(--card);border:.5px solid var(--border);border-radius:var(--r);padding:6px 3px 5px;text-align:center}
+.nc .n{font-size:15px;font-weight:500}
+.nc .bars{display:flex;gap:2px;justify-content:center;margin:3px 0 2px}
+.bar{height:5px;border-radius:2px;min-width:2px}
+.bb{background:var(--acc)}.be{background:var(--grn)}
+.nc .cnts{display:flex;justify-content:center;gap:3px}
+.cnt{font-size:10px;font-weight:500;padding:1px 4px;border-radius:3px}
+.cb{background:var(--acc-bg);color:var(--acc-dk)}.ce{background:var(--grn-bg);color:var(--grn)}
+.nc.hb{border-color:var(--acc);background:var(--acc-bg)}
+.nc.he{border-color:var(--grn);background:var(--grn-bg)}
+.nc.hbo{border-color:var(--gld);background:var(--gld-bg)}
+
+/* draws */
+.dlst{display:flex;flex-direction:column;gap:7px}
+.dc{background:var(--card);border:.5px solid var(--border);border-radius:var(--r);padding:9px 13px}
+.dch{display:flex;justify-content:space-between;align-items:center;margin-bottom:7px;font-size:12px;color:var(--muted)}
+.dch strong{font-size:13px;color:var(--text)}
+.pills{display:flex;flex-wrap:wrap;gap:3px;margin-bottom:4px}
+.pill{font-size:11px;font-weight:500;padding:2px 6px;border-radius:999px}
+.pb{background:var(--acc-bg);color:var(--acc-dk)}
+.pe{background:var(--grn-bg);color:var(--grn)}
+.pm{background:var(--red-bg);color:var(--red);border:.5px solid #e24b4a}
+
+/* box */
+.box{background:var(--card);border:.5px solid var(--border);border-radius:12px;padding:16px;margin-bottom:16px}
+.box h3{font-size:14px;font-weight:500;margin-bottom:12px}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px}
+.info{font-size:12px;color:var(--muted);background:var(--bg);border-left:3px solid var(--borders);border-radius:0 var(--r) var(--r) 0;padding:9px 13px;margin-bottom:14px}
+.info strong{color:var(--text)}
+.circles{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.circ{width:46px;height:46px;border-radius:50%;background:var(--acc);color:#fff;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:500}
+
+/* backtest table */
+.btwrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;padding:7px 9px;border-bottom:1px solid var(--border);color:var(--muted);font-weight:500;white-space:nowrap}
+td{padding:6px 9px;border-bottom:.5px solid var(--border);vertical-align:middle}
+tr:last-child td{border:none}
+tr:hover td{background:var(--bg)}
+.w0{color:var(--muted)}.w1{color:var(--amb)}.w2{color:var(--grn);font-weight:500}.w3{color:var(--acc);font-weight:600}.w4{color:var(--gld);font-weight:700}
+.wbar{display:inline-block;height:6px;border-radius:3px;background:var(--acc);vertical-align:middle;margin-left:5px}
+
+@media(max-width:560px){
+  .ngrid{grid-template-columns:repeat(auto-fill,minmax(56px,1fr))}
+  .scards{grid-template-columns:repeat(2,1fr)}
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ── SETUP BANNER (nascosto dopo configurazione) ── -->
+  <div class="setup" id="setup-banner">
+    <h2>⚙️ Configurazione iniziale — solo una volta</h2>
+    <ol>
+      <li>Vai su <a href="https://dash.cloudflare.com" target="_blank">dash.cloudflare.com</a> → accedi o registrati gratis</li>
+      <li><strong>Workers &amp; Pages</strong> → <strong>Create</strong> → <strong>Create Worker</strong></li>
+      <li>Dai un nome (es. <code>10elotto-proxy</code>), clicca <strong>Deploy</strong></li>
+      <li>Clicca <strong>Edit code</strong> → incolla tutto il contenuto di <code>worker.js</code> → <strong>Deploy</strong></li>
+      <li>Copia l'URL del worker (es. <code>https://10elotto-proxy.tuonome.workers.dev</code>)</li>
+      <li>Incollalo qui sotto e clicca <strong>Salva &amp; Carica</strong></li>
+    </ol>
+    <input type="text" id="proxy-input" placeholder="https://10elotto-proxy.tuonome.workers.dev" style="width:100%;margin-top:8px;font-family:monospace">
+    <button class="pri" onclick="saveProxy()" style="margin-top:8px">✅ Salva &amp; Carica</button>
+  </div>
+
+  <!-- ── HEADER ── -->
+  <div class="hdr">
+    <div>
+      <h1>🎯 10eLotto ogni 5 min — Analisi &amp; Backtest</h1>
+      <div class="hdr-sub" id="hdr-sub">Fonte: lottologia.com · auto-refresh ogni 5 min</div>
+    </div>
+    <div class="hdr-r">
+      <div class="cntd" id="cntd"></div>
+      <button onclick="toggleDbg()" style="font-size:11px;padding:4px 9px">🐛 Debug</button>
+      <button onclick="resetProxy()" style="font-size:11px;padding:4px 9px">⚙️ Proxy</button>
+      <button class="pri" id="rbtn" onclick="fetchData(true)" disabled>↻ Aggiorna</button>
+    </div>
+  </div>
+
+  <!-- ── STATUS ── -->
+  <div class="sbar">
+    <div class="dot didle" id="sdot"></div>
+    <div class="smsg" id="smsg">Configura il proxy per iniziare</div>
+    <div class="stime" id="stime"></div>
+  </div>
+  <div class="dbg" id="dbg"></div>
+
+  <!-- ── TABS ── -->
+  <div class="tabs">
+    <button class="tab on" onclick="switchTab('freq')">📊 Frequenze</button>
+    <button class="tab"    onclick="switchTab('draws')">📋 Estrazioni</button>
+    <button class="tab"    onclick="switchTab('predict')">🔮 Predizione</button>
+    <button class="tab"    onclick="switchTab('backtest')">🧪 Backtest</button>
+  </div>
+
+  <!-- FREQ -->
+  <div class="pane on" id="pane-freq">
+    <div class="scards" id="scards"></div>
+    <div class="tb">
+      <label>Finestra: <strong id="nval">5</strong> est.</label>
+      <input type="range" id="nslider" min="1" max="20" value="5" oninput="setN(this.value)">
+      <div class="leg">
+        <div class="li"><div class="ls" style="background:var(--acc)"></div>Base (20)</div>
+        <div class="li"><div class="ls" style="background:var(--grn)"></div>Extra (15)</div>
+        <div class="li"><div class="ls" style="background:var(--gld);height:10px;width:10px;border-radius:2px"></div>Hot entrambi</div>
+      </div>
+    </div>
+    <div class="ngrid" id="ngrid"></div>
+  </div>
+
+  <!-- DRAWS -->
+  <div class="pane" id="pane-draws">
+    <div class="tb">
+      <label>Mostra: <select id="dn" onchange="renderDraws()">
+        <option value="5">ultime 5</option><option value="10">ultime 10</option>
+        <option value="20" selected>ultime 20</option><option value="50">ultime 50</option>
+        <option value="all">tutte</option>
+      </select></label>
+    </div>
+    <div class="dlst" id="dlst"></div>
+  </div>
+
+  <!-- PREDICT -->
+  <div class="pane" id="pane-predict">
+    <div class="info"><strong>Algoritmo:</strong> punteggio pesato per frequenza (estrazioni recenti valgono di più), calore ultimi 3 turni, presenza Base/Extra, vicinanza ai numeri più frequenti.</div>
+    <div class="box">
+      <h3>⚙️ Parametri</h3>
+      <div class="row">
+        <label>Finestra: <select id="pw"><option value="5">5</option><option value="10" selected>10</option><option value="20">20</option><option value="30">30</option></select></label>
+        <label>Numeri: <select id="pc"><option value="5">5</option><option value="6" selected>6</option><option value="7">7</option><option value="8">8</option><option value="10">10</option></select></label>
+        <label><input type="checkbox" id="pex" checked> Pesa Extra</label>
+        <button class="pri" onclick="doPred()">🔮 Calcola</button>
+      </div>
+    </div>
+    <div class="box" id="predout" style="display:none">
+      <h3>✨ Combinazione suggerita</h3>
+      <div class="circles" id="predcirc"></div>
+      <div id="preddet" style="font-size:12px;color:var(--muted);margin-bottom:12px"></div>
+      <button onclick="btPred()">🧪 Backtest su ultime 50 est.</button>
+    </div>
+    <div id="predbt"></div>
+  </div>
+
+  <!-- BACKTEST -->
+  <div class="pane" id="pane-backtest">
+    <div class="info"><strong>Backtest manuale:</strong> inserisci i tuoi numeri e verifica quante volte avresti indovinato ambo, terno, quaterna nelle estrazioni passate.</div>
+    <div class="box">
+      <div class="row">
+        <label>Numeri: <input type="text" id="btin" placeholder="es. 7 14 23 45" style="width:155px"></label>
+        <label>Su: <select id="btmode"><option value="both">Base+Extra</option><option value="base">Solo Base</option><option value="extra">Solo Extra</option></select></label>
+        <label>Ultime: <input type="number" id="btwin" value="50" min="1" max="999" style="width:62px"> est.</label>
+        <button class="pri" onclick="btManual()">🧪 Avvia</button>
+      </div>
+    </div>
+    <div id="btout"></div>
+  </div>
+
+</div>
+
+<script>
+/* ── CONFIG ── */
+const TARGET = 'https://lottologia.com/10elotto5minuti/tutte-le-estrazioni';
+const STORAGE_KEY = '10elotto_proxy_url';
+
+let draws = [], N = 5, lastPred = [], cdTimer = null, cdSec = 300, fetching = false;
+let PROXY_URL = '';
+
+/* ── PROXY SETUP ── */
+function loadProxy() {
+  const saved = localStorage.getItem(STORAGE_KEY) || '';
+  if (saved) {
+    PROXY_URL = saved.replace(/\/$/, '');
+    document.getElementById('proxy-input').value = PROXY_URL;
+    document.getElementById('setup-banner').style.display = 'none';
+    document.getElementById('rbtn').disabled = false;
+    dbgLog('Proxy caricato da localStorage: ' + PROXY_URL);
+    fetchData();
+  }
+}
+
+function saveProxy() {
+  const val = document.getElementById('proxy-input').value.trim().replace(/\/$/, '');
+  if (!val.startsWith('http')) { alert('Inserisci un URL valido (https://...)'); return; }
+  PROXY_URL = val;
+  localStorage.setItem(STORAGE_KEY, val);
+  document.getElementById('setup-banner').style.display = 'none';
+  document.getElementById('rbtn').disabled = false;
+  dbgLog('Proxy salvato: ' + PROXY_URL);
+  fetchData();
+}
+
+function resetProxy() {
+  localStorage.removeItem(STORAGE_KEY);
+  document.getElementById('setup-banner').style.display = 'block';
+  document.getElementById('proxy-input').value = PROXY_URL;
+}
+
+/* ── FETCH ── */
+function proxyUrl(target) {
+  return PROXY_URL + '?url=' + encodeURIComponent(target);
+}
+
+async function fetchData(manual = false) {
+  if (fetching || !PROXY_URL) return;
+  fetching = true;
+  setStatus('warn', 'Connessione a lottologia.com...');
+  document.getElementById('rbtn').disabled = true;
+
+  try {
+    const url = proxyUrl(TARGET);
+    dbgLog('Fetch: ' + url.slice(0, 90) + '...');
+    const ctrl = new AbortController();
+    const tid = setTimeout(() => ctrl.abort(), 15000);
+    const r = await fetch(url, { signal: ctrl.signal });
+    clearTimeout(tid);
+
+    if (!r.ok) throw new Error('HTTP ' + r.status + ' dal proxy');
+    const html = await r.text();
+    dbgLog('Ricevuti ' + html.length + ' chars');
+    if (html.length < 500) throw new Error('Risposta troppo corta — controlla il Worker');
+
+    const parsed = parseHtml(html);
+    if (parsed.length === 0) throw new Error('Parser: 0 estrazioni trovate. Apri 🐛 per dettagli');
+
+    draws = parsed;
+    N = Math.min(N || 5, draws.length);
+    const sl = document.getElementById('nslider');
+    sl.max = Math.min(50, draws.length);
+    if (parseInt(sl.value) > draws.length) sl.value = N;
+
+    const d = draws[0];
+    setStatus('ok', draws.length + ' estrazioni · ultima #' + d.id + ' ore ' + d.time + ' (' + d.date + ')');
+    setTime();
+    render();
+    startCD();
+
+  } catch(e) {
+    dbgLog('ERRORE: ' + e.message);
+    setStatus('err', e.message);
+  }
+
+  fetching = false;
+  document.getElementById('rbtn').disabled = false;
+}
+
+/* ── PARSER ── */
+function parseNums(str) {
+  const digits = str.replace(/[^0-9]/g, '');
+  const nums = [];
+  for (let i = 0; i + 1 < digits.length; i += 2) {
+    const n = parseInt(digits.slice(i, i + 2), 10);
+    if (n >= 1 && n <= 90) nums.push(n);
+  }
+  return nums;
+}
+
+function parseHtml(html) {
+  // Strip HTML tags → plain text
+  const text = html
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<[^>]+>/g, '\n')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&#\d+;/g, '')
+    .replace(/&[a-z]+;/g, '');
+
+  dbgLog('Testo dopo strip: ' + text.length + ' chars');
+
+  // Find all draw headers: #NNN  DD Mon YYYY  HH:MM
+  const HEADER = /#(\d+)\s+(\d{1,2}\s+\w+\s+\d{4})\s+(\d{2}:\d{2})/g;
+  const headers = [];
+  let m;
+  while ((m = HEADER.exec(text)) !== null) {
+    headers.push({ id: parseInt(m[1]), date: m[2].trim(), time: m[3], pos: m.index + m[0].length });
+  }
+
+  dbgLog('Header trovati: ' + headers.length);
+  if (headers.length === 0) {
+    dbgLog('SAMPLE TESTO:\n' + text.slice(0, 500));
+    return [];
+  }
+
+  const results = [];
+  for (let i = 0; i < headers.length; i++) {
+    const h = headers[i];
+    const end = i + 1 < headers.length ? headers[i + 1].pos : text.length;
+    const body = text.slice(h.pos, end);
+
+    const numPos   = body.search(/Numeri/i);
+    const oroPos   = body.search(/\bOro\b/i);
+    const extraPos = body.search(/Extra/i);
+    if (numPos === -1 || extraPos === -1) continue;
+
+    const baseEnd = (oroPos !== -1 && oroPos > numPos) ? oroPos : extraPos;
+    const base  = parseNums(body.slice(numPos + 6, baseEnd)).slice(0, 20);
+    const extra = parseNums(body.slice(extraPos + 5)).slice(0, 15);
+
+    if (base.length >= 15) results.push({ id: h.id, date: h.date, time: h.time, base, extra });
+  }
+
+  dbgLog('Estrazioni valide: ' + results.length);
+  return results.sort((a, b) => b.id - a.id);
+}
+
+/* ── STATUS / COUNTDOWN ── */
+function setStatus(type, msg) {
+  const cls={ok:'dok',err:'derr',warn:'dwrn',idle:'didle'};
+  document.getElementById('sdot').className='dot '+(cls[type]||'didle');
+  document.getElementById('smsg').textContent=msg;
+}
+function setTime(){
+  const n=new Date();
+  document.getElementById('stime').textContent=
+    'agg. '+n.getHours().toString().padStart(2,'0')+':'+n.getMinutes().toString().padStart(2,'0')+':'+n.getSeconds().toString().padStart(2,'0');
+}
+function startCD(){
+  clearInterval(cdTimer); cdSec=310;
+  cdTimer=setInterval(()=>{
+    cdSec--;
+    const m=Math.floor(cdSec/60),s=cdSec%60;
+    document.getElementById('cntd').innerHTML='prossimo: <strong>'+m+':'+s.toString().padStart(2,'0')+'</strong>';
+    if(cdSec<=0){clearInterval(cdTimer);document.getElementById('cntd').innerHTML='';fetchData();}
+  },1000);
+}
+
+/* ── DEBUG ── */
+function dbgLog(msg){
+  const el=document.getElementById('dbg');
+  el.textContent+=msg+'\n';
+  el.scrollTop=el.scrollHeight;
+}
+function toggleDbg(){
+  const el=document.getElementById('dbg');
+  el.style.display=el.style.display==='block'?'none':'block';
+}
+
+/* ── TABS ── */
+function switchTab(name){
+  const ns=['freq','draws','predict','backtest'];
+  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('on',ns[i]===name));
+  document.querySelectorAll('.pane').forEach(p=>p.classList.remove('on'));
+  document.getElementById('pane-'+name).classList.add('on');
+}
+function setN(v){N=parseInt(v);document.getElementById('nval').textContent=N;renderFreq();}
+
+/* ── RENDER ── */
+function render(){renderStats();renderFreq();renderDraws();}
+
+function renderStats(){
+  if(!draws.length)return;
+  const d=draws[0];
+  const uniq=new Set(draws.slice(0,5).flatMap(d=>d.base)).size;
+  document.getElementById('scards').innerHTML=`
+    <div class="sc"><div class="lb">Estrazioni oggi</div><div class="vl">${draws.length}</div></div>
+    <div class="sc"><div class="lb">Ultima (#${d.id})</div><div class="vl">${d.time}</div></div>
+    <div class="sc"><div class="lb">Num. unici (ult.5)</div><div class="vl">${uniq}</div></div>
+    <div class="sc"><div class="lb">Copertura</div><div class="vl">${Math.round(uniq/90*100)}%</div></div>`;
+}
+
+function getCounts(n){
+  const sl=draws.slice(0,Math.min(n,draws.length));
+  const bc={},ec={};
+  for(let i=1;i<=90;i++){bc[i]=0;ec[i]=0;}
+  sl.forEach(d=>{
+    d.base.forEach(x=>{if(x>=1&&x<=90)bc[x]++;});
+    d.extra.forEach(x=>{if(x>=1&&x<=90)ec[x]++;});
+  });
+  return{bc,ec};
+}
+
+function renderFreq(){
+  if(!draws.length)return;
+  const{bc,ec}=getCounts(N);
+  const maxB=Math.max(...Object.values(bc));
+  const maxE=Math.max(...Object.values(ec));
+  const maxT=Math.max(...Array.from({length:90},(_,i)=>bc[i+1]+ec[i+1]));
+  const g=document.getElementById('ngrid');g.innerHTML='';
+  for(let i=1;i<=90;i++){
+    const b=bc[i],e=ec[i],t=b+e;
+    const hB=b===maxB&&maxB>0,hE=e===maxE&&maxE>0,hBO=t===maxT&&maxT>0&&b>0&&e>0;
+    let cls='nc';if(hBO)cls+=' hbo';else if(hB)cls+=' hb';else if(hE)cls+=' he';
+    const bw=maxB?Math.max(2,Math.round(b/maxB*28)):2;
+    const ew=maxE?Math.max(2,Math.round(e/maxE*28)):2;
+    const el=document.createElement('div');el.className=cls;
+    el.innerHTML=`<div class="n">${i}</div>
+      <div class="bars"><div class="bar bb" style="width:${bw}px"></div><div class="bar be" style="width:${ew}px"></div></div>
+      <div class="cnts"><span class="cnt cb">B:${b}</span><span class="cnt ce">E:${e}</span></div>`;
+    g.appendChild(el);
+  }
+}
+
+function renderDraws(){
+  if(!draws.length)return;
+  const sel=document.getElementById('dn').value;
+  const list=sel==='all'?draws:draws.slice(0,parseInt(sel));
+  const c=document.getElementById('dlst');c.innerHTML='';
+  list.forEach(d=>{
+    const el=document.createElement('div');el.className='dc';
+    const bp=d.base.map(n=>`<span class="pill pb">${n}</span>`).join('');
+    const ep=d.extra.map(n=>`<span class="pill pe">${n}</span>`).join('');
+    el.innerHTML=`<div class="dch"><strong>#${d.id}</strong><span>${d.date} · ${d.time}</span></div>
+      <div class="pills">${bp}</div><div class="pills">${ep}</div>`;
+    c.appendChild(el);
+  });
+}
+
+/* ── PREDICTION ── */
+function score(num,sl,useE){
+  let s=0;
+  sl.forEach((d,idx)=>{
+    const w=1+(sl.length-idx)/sl.length;
+    const inB=d.base.includes(num),inE=d.extra.includes(num);
+    if(inB)s+=2*w;if(inE&&useE)s+=1*w;
+    if(idx<3&&inB)s+=3;if(idx<3&&inE&&useE)s+=1.5;
+    d.base.forEach(n=>{if(Math.abs(n-num)<=2&&n!==num)s+=0.15*w;});
+  });
+  return s;
+}
+function doPred(){
+  if(!draws.length){alert('Prima carica i dati');return;}
+  const win=parseInt(document.getElementById('pw').value);
+  const cnt=parseInt(document.getElementById('pc').value);
+  const useE=document.getElementById('pex').checked;
+  const sl=draws.slice(0,Math.min(win,draws.length));
+  const sc={};for(let i=1;i<=90;i++)sc[i]=score(i,sl,useE);
+  const top=Object.entries(sc).sort((a,b)=>b[1]-a[1]).slice(0,cnt);
+  lastPred=top.map(([n])=>parseInt(n));
+  const maxS=top[0][1];
+  document.getElementById('predcirc').innerHTML=lastPred.map(n=>`<div class="circ">${n}</div>`).join('');
+  document.getElementById('preddet').innerHTML=top.map(([n,s])=>`${n}: <strong>${parseFloat(s).toFixed(1)}</strong> (${Math.round(s/maxS*100)}%)`).join(' · ');
+  document.getElementById('predout').style.display='block';
+  document.getElementById('predbt').innerHTML='';
+}
+function btPred(){
+  if(!lastPred.length)return;
+  document.getElementById('predbt').innerHTML=btHtml(backtest(lastPred,draws.slice(0,50),'both'),lastPred,'🧪 Backtest combinazione · ultime 50 est.');
+}
+
+/* ── BACKTEST ── */
+function backtest(combo,sl,mode){
+  return sl.map(d=>{
+    let pool=[];
+    if(mode!=='extra')pool=pool.concat(d.base);
+    if(mode!=='base')pool=pool.concat(d.extra);
+    const hits=combo.filter(n=>pool.includes(n));
+    return{draw:d,hits,count:hits.length};
+  });
+}
+function btHtml(results,combo,title){
+  const w={0:0,1:0,2:0,3:0,'4+':0};
+  results.forEach(r=>{if(r.count===0)w[0]++;else if(r.count===1)w[1]++;else if(r.count===2)w[2]++;else if(r.count===3)w[3]++;else w['4+']++;});
+  const tot=results.length,rate=Math.round((tot-w[0])/tot*100);
+  let html=`<div class="box" style="margin-top:14px"><h3>${title}</h3>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:12px">Combinazione: <strong>${combo.join(' — ')}</strong> · ${tot} estrazioni</p>
+    <div class="scards" style="margin-bottom:14px">
+      <div class="sc"><div class="lb">Hit rate (≥1)</div><div class="vl">${rate}%</div></div>
+      <div class="sc"><div class="lb">Ambo (≥2)</div><div class="vl" style="color:var(--grn)">${w[2]+w[3]+w['4+']}</div></div>
+      <div class="sc"><div class="lb">Terno (≥3)</div><div class="vl" style="color:var(--acc)">${w[3]+w['4+']}</div></div>
+      <div class="sc"><div class="lb">4+ numeri</div><div class="vl" style="color:var(--gld)">${w['4+']}</div></div>
+    </div>
+    <div class="btwrap"><table>
+    <thead><tr><th>#</th><th>Data</th><th>Ora</th><th>Match</th><th>Indovinati</th></tr></thead><tbody>`;
+  results.slice(0,100).forEach(r=>{
+    const cls=r.count>=4?'w4':r.count===3?'w3':r.count===2?'w2':r.count===1?'w1':'w0';
+    const hp=r.hits.map(n=>`<span class="pill pm">${n}</span>`).join(' ');
+    const bw=Math.min(r.count*18,70);
+    html+=`<tr><td>${r.draw.id}</td><td style="font-size:11px;color:var(--muted)">${r.draw.date}</td><td>${r.draw.time}</td>
+      <td class="${cls}">${r.count}<span class="wbar" style="width:${bw}px"></span></td>
+      <td>${hp||'<span style="font-size:11px;color:var(--muted)">—</span>'}</td></tr>`;
+  });
+  html+=`</tbody></table></div></div>`;return html;
+}
+function btManual(){
+  if(!draws.length){alert('Prima carica i dati');return;}
+  const raw=document.getElementById('btin').value.trim();
+  if(!raw){alert('Inserisci almeno 2 numeri');return;}
+  const combo=raw.split(/[\s,]+/).map(Number).filter(n=>n>=1&&n<=90);
+  if(combo.length<2){alert('Almeno 2 numeri validi 1-90');return;}
+  const mode=document.getElementById('btmode').value;
+  const win=Math.min(parseInt(document.getElementById('btwin').value)||50,draws.length);
+  document.getElementById('btout').innerHTML=btHtml(backtest(combo,draws.slice(0,win),mode),combo,'🧪 Backtest manuale');
+}
+
+/* ── BOOT ── */
+window.addEventListener('load', loadProxy);
+</script>
+</body>
+</html>
