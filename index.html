@@ -97,6 +97,11 @@ input[type=range]{accent-color:var(--acc);width:110px;cursor:pointer}
 .info strong{color:var(--text)}
 .circles{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
 .circ{width:46px;height:46px;border-radius:50%;background:var(--acc);color:#fff;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:500}
+.circ-opt{width:46px;height:46px;border-radius:50%;background:transparent;color:var(--muted);border:2px dashed var(--muted);display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:500;cursor:pointer;transition:all .15s}
+.circ-opt.on{background:var(--amb);color:#fff;border:2px solid var(--amb)}
+.pnum{width:38px;height:38px;border-radius:6px;background:var(--card);border:.5px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:500;cursor:pointer;color:var(--muted);transition:all .12s;user-select:none}
+.pnum:hover{border-color:var(--acc);color:var(--acc)}
+.pnum.on{background:var(--acc);color:#fff;border-color:var(--acc)}
 
 /* backtest table */
 .btwrap{overflow-x:auto}
@@ -193,17 +198,50 @@ tr:hover td{background:var(--bg)}
     </div>
     <div class="box" id="predout" style="display:none">
       <h3>✨ Combinazione suggerita</h3>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:6px">Combinazione principale</div>
       <div class="circles" id="predcirc"></div>
-      <div id="preddet" style="font-size:12px;color:var(--muted);margin-bottom:12px"></div>
-      <button onclick="btPred()">🧪 Backtest su ultime 50 est.</button>
+      <div style="font-size:12px;color:var(--muted);margin:12px 0 6px">
+        + 4 numeri opzionali — clicca per aggiungerli alla combinazione
+      </div>
+      <div class="circles" id="predcirc-opt"></div>
+      <div id="preddet" style="font-size:12px;color:var(--muted);margin:10px 0 12px"></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <button onclick="btPred()">🧪 Backtest combinazione selezionata</button>
+        <span id="pred-combo-label" style="font-size:12px;color:var(--muted)"></span>
+      </div>
     </div>
     <div id="predbt"></div>
+
+    <!-- ── SELEZIONE MANUALE ── -->
+    <div class="box" style="margin-top:18px">
+      <h3>🎯 Selezione manuale</h3>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:12px">
+        Clicca i numeri per selezionarli, poi inviali al backtest o salvali come combinazione.
+      </div>
+      <div id="manual-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(42px,1fr));gap:4px;margin-bottom:14px"></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
+        <button class="pri" onclick="btManualPicker()">🧪 Backtest selezione</button>
+        <button onclick="saveManualCombo()">💾 Salva come combinazione</button>
+        <button onclick="clearManualPicker()">✕ Svuota</button>
+        <span id="manual-label" style="font-size:12px;color:var(--muted)">Selezionati: nessuno</span>
+      </div>
+    </div>
+    <div id="manualbt"></div>
   </div>
 
   <!-- BACKTEST -->
   <div class="pane" id="pane-backtest">
     <div class="info"><strong>Backtest manuale:</strong> inserisci i tuoi numeri e verifica quante volte avresti indovinato ambo, terno, quaterna nelle estrazioni passate.</div>
     <div class="box">
+      <div class="row">
+        <label>Combinazione:
+          <select id="bt-preset" onchange="applyPreset()">
+            <option value="">— inserisci manualmente —</option>
+            <option value="4,23,34,46,64,78">4 · 23 · 34 · 46 · 64 · 78</option>
+            <option value="3,22,51,56,63,77">3 · 22 · 51 · 56 · 63 · 77</option>
+          </select>
+        </label>
+      </div>
       <div class="row">
         <label>Numeri: <input type="text" id="btin" placeholder="es. 7 14 23 45" style="width:155px"></label>
         <label>Su: <select id="btmode"><option value="both">Base+Extra</option><option value="base">Solo Base</option><option value="extra">Solo Extra</option></select></label>
@@ -387,6 +425,7 @@ function switchTab(name){
   document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('on',ns[i]===name));
   document.querySelectorAll('.pane').forEach(p=>p.classList.remove('on'));
   document.getElementById('pane-'+name).classList.add('on');
+  if (name === 'predict') buildManualGrid();
 }
 function setN(v){N=parseInt(v);document.getElementById('nval').textContent=N;renderFreq();}
 
@@ -567,6 +606,9 @@ function score(num,sl,useE){
   });
   return s;
 }
+let lastPredOpt = [];     // 4 opzionali
+let lastPredOptOn = [];   // quali opzionali sono attivi
+
 function doPred(){
   if(!draws.length){alert('Prima carica i dati');return;}
   const win=parseInt(document.getElementById('pw').value);
@@ -574,53 +616,175 @@ function doPred(){
   const useE=document.getElementById('pex').checked;
   const sl=draws.slice(0,Math.min(win,draws.length));
   const sc={};for(let i=1;i<=90;i++)sc[i]=score(i,sl,useE);
-  const top=Object.entries(sc).sort((a,b)=>b[1]-a[1]).slice(0,cnt);
-  lastPred=top.map(([n])=>parseInt(n));
+  // Prendi cnt + 4 opzionali
+  const top=Object.entries(sc).sort((a,b)=>b[1]-a[1]).slice(0,cnt+4);
+  lastPred=top.slice(0,cnt).map(([n])=>parseInt(n));
+  lastPredOpt=top.slice(cnt).map(([n])=>parseInt(n));
+  lastPredOptOn=[];  // nessun opzionale attivo all'inizio
   const maxS=top[0][1];
-  document.getElementById('predcirc').innerHTML=lastPred.map(n=>`<div class="circ">${n}</div>`).join('');
-  document.getElementById('preddet').innerHTML=top.map(([n,s])=>`${n}: <strong>${parseFloat(s).toFixed(1)}</strong> (${Math.round(s/maxS*100)}%)`).join(' · ');
+
+  // Cerchi combinazione principale
+  document.getElementById('predcirc').innerHTML=
+    lastPred.map(n=>`<div class="circ">${n}</div>`).join('');
+
+  // Cerchi opzionali — cliccabili
+  document.getElementById('predcirc-opt').innerHTML=
+    lastPredOpt.map((n,i)=>
+      `<div class="circ-opt" id="opt-${i}" onclick="toggleOpt(${i})" title="Score: ${sc[n].toFixed(1)}">${n}</div>`
+    ).join('');
+
+  document.getElementById('preddet').innerHTML=
+    top.map(([n,s],i)=>`<span style="${i>=cnt?'opacity:.6':''}">${n}: <strong>${parseFloat(s).toFixed(1)}</strong> (${Math.round(s/maxS*100)}%)</span>`).join(' · ');
+
   document.getElementById('predout').style.display='block';
   document.getElementById('predbt').innerHTML='';
-}
-function btPred(){
-  if(!lastPred.length)return;
-  document.getElementById('predbt').innerHTML=btHtml(backtest(lastPred,draws.slice(0,50),'both'),lastPred,'🧪 Backtest combinazione · ultime 50 est.');
+  updateComboLabel();
 }
 
-/* ── BACKTEST ── */
-function backtest(combo,sl,mode){
-  return sl.map(d=>{
-    let pool=[];
-    if(mode!=='extra')pool=pool.concat(d.base);
-    if(mode!=='base')pool=pool.concat(d.extra);
-    const hits=combo.filter(n=>pool.includes(n));
-    return{draw:d,hits,count:hits.length};
+function toggleOpt(i){
+  const idx=lastPredOptOn.indexOf(i);
+  if(idx===-1) lastPredOptOn.push(i);
+  else lastPredOptOn.splice(idx,1);
+  document.getElementById('opt-'+i).classList.toggle('on', lastPredOptOn.includes(i));
+  updateComboLabel();
+}
+
+function updateComboLabel(){
+  const active=lastPredOpt.filter((_,i)=>lastPredOptOn.includes(i));
+  const full=[...lastPred,...active];
+  document.getElementById('pred-combo-label').textContent=
+    `Combinazione attiva: ${full.join(' — ')} (${full.length} numeri)`;
+}
+
+function btPred(){
+  if(!lastPred.length)return;
+  const active=lastPredOpt.filter((_,i)=>lastPredOptOn.includes(i));
+  const combo=[...lastPred,...active];
+  document.getElementById('predbt').innerHTML=
+    btHtml(backtest(combo,draws.slice(0,50),'both'),combo,
+      `🧪 Backtest combinazione · ${combo.length} numeri · ultime 50 est.`);
+}
+
+/* ── PRIZE TABLE (no Oro/Doppio Oro)
+   Chiave: `${giocati}_${indovinati_base}_${indovinati_extra}`
+   Fonte: tabella ufficiale ADM 10eLotto
+   Per semplicità gestiamo le combinazioni più rilevanti (giocati 1-10).
+   Premio = base + extra (sommati se entrambi > 0, ma in realtà sono separati —
+   il giocatore prende il MAGGIORE tra le due colonne, non la somma).
+   Qui mostriamo entrambi separati e il totale reale.
+──────────────────────────────────────────────────────────────── */
+const PRIZES = (() => {
+  // T[giocati][indovinati] = [premio_base 10eLotto €, premio_extra €]
+  // Base = colonna "10eLotto", Extra = colonna "EXTRA PREMI"
+  // Indipendenti: prize = max(base, extra)
+  const T = {
+    1:  { 1:[2, 4] },
+    2:  { 2:[7, 16] },
+    3:  { 2:[2,0],    3:[25, 50] },
+    4:  { 2:[2,0],    3:[10,0],    4:[50, 100] },
+    5:  { 2:[2,0],    3:[5,0],     4:[25,0],    5:[150, 300] },
+    6:  { 2:[0,1],    3:[2,7],     4:[10,20],   5:[100,200],  6:[1000,2000] },
+    7:  { 3:[2,0],    4:[8,0],     5:[40,75],    6:[750,1500],  7:[50000,100000] },
+    8:  { 3:[5,0],    4:[5,0],     5:[20,45],    6:[500,1000],  7:[50000,100000],  8:[250000,500000] },
+    9:  { 4:[5,0],    5:[12,25],   6:[250,500],  7:[5000,10000],8:[125000,250000], 9:[500000,1000000] },
+    10: { 5:[12,25],  6:[50,100],  7:[800,1600], 8:[5000,10000],9:[125000,250000], 10:[500000,1000000] },
+  };
+  return T;
+})();
+
+function getPrize(giocati, hitsBase, hitsExtra) {
+  const row = PRIZES[giocati];
+  if (!row) return { base: 0, extra: 0 };
+  const pb = row[hitsBase]  ? row[hitsBase][0]  : 0;
+  const pe = row[hitsExtra] ? row[hitsExtra][1] : 0;
+  return { base: pb, extra: pe };
+}
+
+function fmtEur(v) {
+  if (!v) return '—';
+  if (v >= 1000000) return '€' + (v/1000000).toFixed(1) + 'M';
+  if (v >= 1000) return '€' + (v/1000).toFixed(0) + 'k';
+  return '€' + v;
+}
+
+/* ── BACKTEST (ora tiene separati base ed extra) ── */
+function backtest(combo, sl, mode) {
+  return sl.map(d => {
+    const hBase  = combo.filter(n => d.base.includes(n));
+    const hExtra = combo.filter(n => d.extra.includes(n));
+    // "both" = conta hits distinti (un numero può uscire solo in uno dei due)
+    const hits = mode === 'base'  ? hBase  :
+                 mode === 'extra' ? hExtra :
+                 [...new Set([...hBase, ...hExtra])];
+    return { draw: d, hits, hBase, hExtra, count: hits.length };
   });
 }
-function btHtml(results,combo,title){
-  const w={0:0,1:0,2:0,3:0,'4+':0};
-  results.forEach(r=>{if(r.count===0)w[0]++;else if(r.count===1)w[1]++;else if(r.count===2)w[2]++;else if(r.count===3)w[3]++;else w['4+']++;});
-  const tot=results.length,rate=Math.round((tot-w[0])/tot*100);
-  let html=`<div class="box" style="margin-top:14px"><h3>${title}</h3>
-    <p style="font-size:12px;color:var(--muted);margin-bottom:12px">Combinazione: <strong>${combo.join(' — ')}</strong> · ${tot} estrazioni</p>
+
+function btHtml(results, combo, title) {
+  const giocati = combo.length;
+  let totalWin = 0;
+  const buckets = {0:0,1:0,2:0,3:0,'4+':0};
+
+  results.forEach(r => {
+    const n = r.count;
+    if (n===0) buckets[0]++; else if(n===1) buckets[1]++;
+    else if(n===2) buckets[2]++; else if(n===3) buckets[3]++; else buckets['4+']++;
+    const p = getPrize(giocati, r.hBase.length, r.hExtra.length);
+    r._prize = p;
+    r._win = Math.max(p.base, p.extra); // prendi il maggiore (non si sommano)
+    totalWin += r._win;
+  });
+
+  const tot = results.length;
+  const rate = Math.round((tot - buckets[0]) / tot * 100);
+  const winRows = results.filter(r => r._win > 0).length;
+
+  let html = `<div class="box" style="margin-top:14px">
+    <h3>${title}</h3>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:12px">
+      Combinazione: <strong>${combo.join(' — ')}</strong> · ${giocati} numeri giocati · ${tot} estrazioni analizzate
+    </p>
     <div class="scards" style="margin-bottom:14px">
-      <div class="sc"><div class="lb">Hit rate (≥1)</div><div class="vl">${rate}%</div></div>
-      <div class="sc"><div class="lb">Ambo (≥2)</div><div class="vl" style="color:var(--grn)">${w[2]+w[3]+w['4+']}</div></div>
-      <div class="sc"><div class="lb">Terno (≥3)</div><div class="vl" style="color:var(--acc)">${w[3]+w['4+']}</div></div>
-      <div class="sc"><div class="lb">4+ numeri</div><div class="vl" style="color:var(--gld)">${w['4+']}</div></div>
+      <div class="sc"><div class="lb">Estrazioni vincenti</div><div class="vl" style="color:var(--grn)">${winRows}</div></div>
+      <div class="sc"><div class="lb">Tasso vincita</div><div class="vl">${rate}%</div></div>
+      <div class="sc"><div class="lb">Totale vinto (simulato)</div><div class="vl" style="color:var(--acc)">${fmtEur(totalWin)}</div></div>
+      <div class="sc"><div class="lb">Media per estrazione</div><div class="vl">${fmtEur(Math.round(totalWin/tot))}</div></div>
     </div>
     <div class="btwrap"><table>
-    <thead><tr><th>#</th><th>Data</th><th>Ora</th><th>Match</th><th>Indovinati</th></tr></thead><tbody>`;
-  results.slice(0,100).forEach(r=>{
-    const cls=r.count>=4?'w4':r.count===3?'w3':r.count===2?'w2':r.count===1?'w1':'w0';
-    const hp=r.hits.map(n=>`<span class="pill pm">${n}</span>`).join(' ');
-    const bw=Math.min(r.count*18,70);
-    html+=`<tr><td>${r.draw.id}</td><td style="font-size:11px;color:var(--muted)">${r.draw.date}</td><td>${r.draw.time}</td>
-      <td class="${cls}">${r.count}<span class="wbar" style="width:${bw}px"></span></td>
-      <td>${hp||'<span style="font-size:11px;color:var(--muted)">—</span>'}</td></tr>`;
+    <thead>
+      <tr>
+        <th>#</th><th>Ora</th>
+        <th>Base <span style="font-size:10px;font-weight:400;color:var(--muted)">(blu)</span></th>
+        <th>Extra <span style="font-size:10px;font-weight:400;color:var(--muted)">(verde)</span></th>
+        <th>Premio Base</th><th>Premio Extra</th><th>Vincita</th>
+      </tr>
+    </thead><tbody>`;
+
+  results.slice(0, 100).forEach(r => {
+    const p = r._prize;
+    const win = r._win;
+    const winCls = win > 0 ? (win >= 1000 ? 'w3' : win >= 100 ? 'w2' : 'w1') : 'w0';
+
+    const bPills = r.hBase.map(n => `<span class="pill pb">${n}</span>`).join(' ');
+    const ePills = r.hExtra.map(n => `<span class="pill pe">${n}</span>`).join(' ');
+    const noneB = `<span style="font-size:11px;color:var(--muted)">—</span>`;
+    const noneE = `<span style="font-size:11px;color:var(--muted)">—</span>`;
+
+    html += `<tr>
+      <td style="font-size:12px">${r.draw.id}</td>
+      <td>${r.draw.time}</td>
+      <td>${bPills || noneB}</td>
+      <td>${ePills || noneE}</td>
+      <td style="font-size:12px">${p.base ? `<span style="color:var(--acc);font-weight:500">${fmtEur(p.base)}</span>` : '—'}</td>
+      <td style="font-size:12px">${p.extra ? `<span style="color:var(--grn);font-weight:500">${fmtEur(p.extra)}</span>` : '—'}</td>
+      <td class="${winCls}" style="font-size:13px;font-weight:600">${win ? fmtEur(win) : '—'}</td>
+    </tr>`;
   });
-  html+=`</tbody></table></div></div>`;return html;
+
+  html += `</tbody></table></div></div>`;
+  return html;
 }
+
 function btManual(){
   if(!draws.length){alert('Prima carica i dati');return;}
   const raw=document.getElementById('btin').value.trim();
@@ -632,7 +796,72 @@ function btManual(){
   document.getElementById('btout').innerHTML=btHtml(backtest(combo,draws.slice(0,win),mode),combo,'🧪 Backtest manuale');
 }
 
-/* ── BOOT ── */
+/* ── MANUAL PICKER ── */
+let pickerSelected = new Set();
+
+function buildManualGrid() {
+  const g = document.getElementById('manual-grid');
+  if (!g || g.children.length > 0) return; // già costruita
+  for (let i = 1; i <= 90; i++) {
+    const el = document.createElement('div');
+    el.className = 'pnum';
+    el.id = 'pn-' + i;
+    el.textContent = i;
+    el.onclick = () => togglePicker(i);
+    g.appendChild(el);
+  }
+}
+
+function togglePicker(n) {
+  if (pickerSelected.has(n)) {
+    pickerSelected.delete(n);
+    document.getElementById('pn-' + n).classList.remove('on');
+  } else {
+    pickerSelected.add(n);
+    document.getElementById('pn-' + n).classList.add('on');
+  }
+  const arr = [...pickerSelected].sort((a,b)=>a-b);
+  document.getElementById('manual-label').textContent =
+    arr.length ? 'Selezionati (' + arr.length + '): ' + arr.join(' · ') : 'Selezionati: nessuno';
+}
+
+function clearManualPicker() {
+  pickerSelected.forEach(n => document.getElementById('pn-' + n)?.classList.remove('on'));
+  pickerSelected.clear();
+  document.getElementById('manual-label').textContent = 'Selezionati: nessuno';
+}
+
+function btManualPicker() {
+  if (!draws.length) { alert('Prima carica i dati'); return; }
+  const combo = [...pickerSelected].sort((a,b)=>a-b);
+  if (combo.length < 2) { alert('Seleziona almeno 2 numeri'); return; }
+  document.getElementById('manualbt').innerHTML =
+    btHtml(backtest(combo, draws.slice(0, 50), 'both'), combo,
+      '🧪 Backtest selezione manuale · ultime 50 est.');
+}
+
+function saveManualCombo() {
+  const combo = [...pickerSelected].sort((a,b)=>a-b);
+  if (combo.length < 1) { alert('Seleziona almeno un numero'); return; }
+  const val = combo.join(',');
+  const label = combo.join(' · ');
+  const sel = document.getElementById('bt-preset');
+  // Controlla se esiste già
+  for (const opt of sel.options) { if (opt.value === val) { alert('Combinazione già presente'); return; } }
+  const opt = document.createElement('option');
+  opt.value = val;
+  opt.textContent = label;
+  sel.appendChild(opt);
+  sel.value = val;
+  alert('Combinazione salvata nel Backtest!');
+}
+
+function applyPreset() {
+  const val = document.getElementById('bt-preset').value;
+  document.getElementById('btin').value = val.replace(/,/g, ' ');
+}
+
+/* ── BOOT (build picker grid on predict tab open) ── */
 window.addEventListener('load', () => {
   dbgLog('Pronto. Premi ↻ Aggiorna per caricare le estrazioni.');
 });
