@@ -67,11 +67,11 @@ input[type=range]{accent-color:var(--acc);width:110px;cursor:pointer}
 .ls{width:12px;height:5px;border-radius:2px}
 
 /* number grid */
-.ngrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(68px,1fr));gap:5px;margin-bottom:18px}
-.nc{background:var(--card);border:.5px solid var(--border);border-radius:var(--r);padding:6px 3px 5px;text-align:center}
-.nc .n{font-size:15px;font-weight:500}
-.nc .bars{display:flex;gap:2px;justify-content:center;margin:3px 0 2px}
-.bar{height:5px;border-radius:2px;min-width:2px}
+.ngrid{display:grid;grid-template-columns:repeat(10,1fr);gap:4px;margin-bottom:18px}
+.nc{background:var(--card);border:.5px solid var(--border);border-radius:var(--r);padding:5px 2px 4px;text-align:center;min-width:0}
+.nc .n{font-size:13px;font-weight:500}
+.nc .bars{display:flex;gap:1px;justify-content:center;margin:2px 0 2px}
+.bar{height:4px;border-radius:2px;min-width:1px}
 .bb{background:var(--acc)}.be{background:var(--grn)}
 .nc .cnts{display:flex;justify-content:center;gap:3px}
 .cnt{font-size:10px;font-weight:500;padding:1px 4px;border-radius:3px}
@@ -99,7 +99,7 @@ input[type=range]{accent-color:var(--acc);width:110px;cursor:pointer}
 .circ{width:46px;height:46px;border-radius:50%;background:var(--acc);color:#fff;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:500}
 .circ-opt{width:46px;height:46px;border-radius:50%;background:transparent;color:var(--muted);border:2px dashed var(--muted);display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:500;cursor:pointer;transition:all .15s}
 .circ-opt.on{background:var(--amb);color:#fff;border:2px solid var(--amb)}
-.pnum{width:38px;height:38px;border-radius:6px;background:var(--card);border:.5px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:500;cursor:pointer;color:var(--muted);transition:all .12s;user-select:none}
+.pnum{width:100%;aspect-ratio:1;border-radius:6px;background:var(--card);border:.5px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:500;cursor:pointer;color:var(--muted);transition:all .12s;user-select:none;min-width:0}
 .pnum:hover{border-color:var(--acc);color:var(--acc)}
 .pnum.on{background:var(--acc);color:#fff;border-color:var(--acc)}
 
@@ -114,7 +114,6 @@ tr:hover td{background:var(--bg)}
 .wbar{display:inline-block;height:6px;border-radius:3px;background:var(--acc);vertical-align:middle;margin-left:5px}
 
 @media(max-width:560px){
-  .ngrid{grid-template-columns:repeat(auto-fill,minmax(56px,1fr))}
   .scards{grid-template-columns:repeat(2,1fr)}
 }
 </style>
@@ -193,6 +192,9 @@ tr:hover td{background:var(--bg)}
         <label>Finestra: <select id="pw"><option value="5">5</option><option value="10" selected>10</option><option value="20">20</option><option value="30">30</option></select></label>
         <label>Numeri: <select id="pc"><option value="5">5</option><option value="6" selected>6</option><option value="7">7</option><option value="8">8</option><option value="10">10</option></select></label>
         <label><input type="checkbox" id="pex" checked> Pesa Extra</label>
+        <label><input type="checkbox" id="pexclude"> Escludi usciti nell'ultima est.</label>
+        <label><input type="checkbox" id="pexclude-delayB"> Escludi ritardo Base &gt;5</label>
+        <label><input type="checkbox" id="pexclude-delayBE"> Escludi ritardo Base+Extra &gt;5</label>
         <button class="pri" onclick="doPred()">🔮 Calcola</button>
       </div>
     </div>
@@ -218,7 +220,7 @@ tr:hover td{background:var(--bg)}
       <div style="font-size:12px;color:var(--muted);margin-bottom:12px">
         Clicca i numeri per selezionarli, poi inviali al backtest o salvali come combinazione.
       </div>
-      <div id="manual-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(42px,1fr));gap:4px;margin-bottom:14px"></div>
+      <div id="manual-grid" style="display:grid;grid-template-columns:repeat(10,1fr);gap:4px;margin-bottom:14px"></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
         <button class="pri" onclick="btManualPicker()">🧪 Backtest selezione</button>
         <button onclick="saveManualCombo()">💾 Salva come combinazione</button>
@@ -454,19 +456,54 @@ function getCounts(n){
   return{bc,ec};
 }
 
+// Calcola ritardo (quante estrazioni consecutive non è uscito, partendo dalla più recente)
+// window: quante estrazioni guardare (default 50)
+function calcDelays(window=50){
+  const sl=draws.slice(0,Math.min(window,draws.length));
+  const delayB={}, delayE={}, delayBE={};
+  for(let i=1;i<=90;i++){
+    // Ritardo base
+    let db=0;
+    for(let j=0;j<sl.length;j++){
+      if(sl[j].base.includes(i)) break;
+      db++;
+    }
+    // Ritardo extra
+    let de=0;
+    for(let j=0;j<sl.length;j++){
+      if(sl[j].extra.includes(i)) break;
+      de++;
+    }
+    // Ritardo base+extra combinato
+    let dbe=0;
+    for(let j=0;j<sl.length;j++){
+      if(sl[j].base.includes(i)||sl[j].extra.includes(i)) break;
+      dbe++;
+    }
+    delayB[i]=db; delayE[i]=de; delayBE[i]=dbe;
+  }
+  return{delayB,delayE,delayBE};
+}
+
 function renderFreq(){
   if(!draws.length)return;
   const{bc,ec}=getCounts(N);
   const extraMode=document.getElementById('extra-mode').checked;
   const palName=document.getElementById('palette-sel').value;
+  const{delayB,delayE,delayBE}=calcDelays(50);
 
-  // Punteggio ponderato
+  // Punteggio ponderato con penalità ritardo
   const wB=extraMode?1:2, wE=extraMode?2:1;
   const scores={};
   let maxScore=0;
   for(let i=1;i<=90;i++){
-    scores[i]=bc[i]*wB+ec[i]*wE;
-    if(scores[i]>maxScore) maxScore=scores[i];
+    let s=bc[i]*wB+ec[i]*wE;
+    // Penalità ritardo: ogni est. di ritardo oltre 3 riduce il punteggio del 15%
+    const delay=extraMode?delayBE[i]:delayB[i];
+    const penalty=Math.max(0,delay-3);
+    s=s*Math.pow(0.85,penalty);
+    scores[i]=s;
+    if(s>maxScore) maxScore=s;
   }
   const hotNum=Object.entries(scores).sort((a,b)=>b[1]-a[1])[0][0]*1;
 
@@ -558,8 +595,16 @@ function renderFreq(){
     const badgeColor=`rgba(255,255,255,${Math.max(0.1,a*0.5)})`;
     const barOpacity=Math.max(0.2,a);
 
+    const db=delayB[i], de=delayE[i];
+    const highDelayB=db>5, highDelayBE=delayBE[i]>5;
+    // Badge ritardo: rosso se ritardo alto, bianco trasparente altrimenti
+    const delayBadgeB=db>5?`background:rgba(200,40,20,0.75);color:#fff`:`background:${badgeColor};color:${textColor}`;
+    const delayBadgeE=de>5?`background:rgba(20,100,20,0.6);color:#fff`:`background:${badgeColor};color:${textColor}`;
+    const tooltip=`Ritardo Base: ${db} | Ritardo Extra: ${de} | B:${b} E:${e}`;
+
     const el=document.createElement('div');
     el.className='nc'+(isHot?' hot-num':'');
+    el.title=tooltip;
     el.style.cssText=`
       background:rgba(${r},${gr},${bl},${a});
       border-color:${isHot?'rgba(255,255,255,0.9)':`rgba(255,255,255,${Math.max(0.04,a*0.25)})`};
@@ -572,8 +617,8 @@ function renderFreq(){
         <div class="bar be" style="width:${Math.max(2,Math.round(e/maxE*28))}px;opacity:${barOpacity}"></div>
       </div>
       <div class="cnts">
-        <span class="cnt" style="background:${badgeColor};color:${textColor}">B:${b}</span>
-        <span class="cnt" style="background:${badgeColor};color:${textColor}">E:${e}</span>
+        <span class="cnt" style="${delayBadgeB}" title="Ritardo Base">R:${db}</span>
+        <span class="cnt" style="${delayBadgeE}" title="Ritardo Extra">R:${de}</span>
       </div>`;
     g.appendChild(el);
   }
@@ -614,27 +659,55 @@ function doPred(){
   const win=parseInt(document.getElementById('pw').value);
   const cnt=parseInt(document.getElementById('pc').value);
   const useE=document.getElementById('pex').checked;
+  const exclude=document.getElementById('pexclude').checked;
+  const excludeDelayB=document.getElementById('pexclude-delayB').checked;
+  const excludeDelayBE=document.getElementById('pexclude-delayBE').checked;
   const sl=draws.slice(0,Math.min(win,draws.length));
+
+  // Calcola score base
   const sc={};for(let i=1;i<=90;i++)sc[i]=score(i,sl,useE);
-  // Prendi cnt + 4 opzionali
-  const top=Object.entries(sc).sort((a,b)=>b[1]-a[1]).slice(0,cnt+4);
+
+  // Calcola ritardi su 50 estrazioni
+  const{delayB,delayE,delayBE}=calcDelays(50);
+
+  // Penalizza score in base al ritardo (stessa logica di renderFreq)
+  for(let i=1;i<=90;i++){
+    const delay=useE?delayBE[i]:delayB[i];
+    const penalty=Math.max(0,delay-3);
+    sc[i]=sc[i]*Math.pow(0.85,penalty);
+  }
+
+  // Escludi numeri usciti nell'ultima estrazione
+  const lastDraw=draws[0];
+  const excluded=new Set();
+  if(exclude) [...lastDraw.base,...lastDraw.extra].forEach(n=>excluded.add(n));
+  // Escludi per ritardo base >5
+  if(excludeDelayB) for(let i=1;i<=90;i++){ if(delayB[i]>5) excluded.add(i); }
+  // Escludi per ritardo base+extra >5
+  if(excludeDelayBE) for(let i=1;i<=90;i++){ if(delayBE[i]>5) excluded.add(i); }
+
+  const sorted=Object.entries(sc)
+    .filter(([n])=>!excluded.has(parseInt(n)))
+    .sort((a,b)=>b[1]-a[1]);
+
+  const top=sorted.slice(0,cnt+4);
   lastPred=top.slice(0,cnt).map(([n])=>parseInt(n));
   lastPredOpt=top.slice(cnt).map(([n])=>parseInt(n));
-  lastPredOptOn=[];  // nessun opzionale attivo all'inizio
-  const maxS=top[0][1];
+  lastPredOptOn=[];
+  const maxS=top[0]?top[0][1]:1;
 
-  // Cerchi combinazione principale
   document.getElementById('predcirc').innerHTML=
-    lastPred.map(n=>`<div class="circ">${n}</div>`).join('');
+    lastPred.map(n=>`<div class="circ" title="Ritardo B:${delayB[n]} BE:${delayBE[n]}">${n}</div>`).join('');
 
-  // Cerchi opzionali — cliccabili
   document.getElementById('predcirc-opt').innerHTML=
     lastPredOpt.map((n,i)=>
-      `<div class="circ-opt" id="opt-${i}" onclick="toggleOpt(${i})" title="Score: ${sc[n].toFixed(1)}">${n}</div>`
+      `<div class="circ-opt" id="opt-${i}" onclick="toggleOpt(${i})" title="Score:${sc[n].toFixed(1)} | Ritardo B:${delayB[n]} BE:${delayBE[n]}">${n}</div>`
     ).join('');
 
+  const excList=[...excluded].sort((a,b)=>a-b);
   document.getElementById('preddet').innerHTML=
-    top.map(([n,s],i)=>`<span style="${i>=cnt?'opacity:.6':''}">${n}: <strong>${parseFloat(s).toFixed(1)}</strong> (${Math.round(s/maxS*100)}%)</span>`).join(' · ');
+    top.map(([n,s],i)=>`<span style="${i>=cnt?'opacity:.6':''}">${n}: <strong>${parseFloat(s).toFixed(1)}</strong> <span style="font-size:10px;opacity:.7">(B:${delayB[n]} BE:${delayBE[n]})</span></span>`).join(' · ')
+    +(excList.length?`<br><span style="color:var(--red);font-size:11px;margin-top:6px;display:block">⛔ Esclusi (${excList.length}): ${excList.join(', ')}</span>`:'');
 
   document.getElementById('predout').style.display='block';
   document.getElementById('predbt').innerHTML='';
