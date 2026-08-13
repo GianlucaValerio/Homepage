@@ -33,6 +33,9 @@ button.pri{background:var(--acc);color:#fff;border-color:var(--acc)}
 button.pri:hover:not(:disabled){background:var(--acc-dk)}
 select,input[type=number],input[type=text]{font-size:13px;padding:5px 9px;border:.5px solid var(--borders);border-radius:var(--r);background:var(--card);color:var(--text)}
 
+/* spin */
+.spin{display:inline-block;width:13px;height:13px;border:2px solid var(--border);border-top-color:var(--acc);border-radius:50%;animation:rot .55s linear infinite;vertical-align:middle;margin-right:4px}
+@keyframes rot{to{transform:rotate(360deg)}}
 /* status bar */
 .sbar{display:flex;align-items:center;gap:10px;background:var(--card);border:.5px solid var(--border);border-radius:var(--r);padding:9px 14px;margin-bottom:16px;font-size:13px;flex-wrap:wrap}
 .dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
@@ -147,6 +150,7 @@ tr:hover td{background:var(--bg)}
     <button class="tab"    onclick="switchTab('draws')">📋 Estrazioni</button>
     <button class="tab"    onclick="switchTab('predict')">🔮 Predizione</button>
     <button class="tab"    onclick="switchTab('backtest')">🧪 Backtest</button>
+    <button class="tab"    onclick="switchTab('stats')">📈 Statistica</button>
   </div>
 
   <!-- FREQ -->
@@ -252,6 +256,51 @@ tr:hover td{background:var(--bg)}
       </div>
     </div>
     <div id="btout"></div>
+
+    <!-- OTTIMIZZATORE -->
+    <div class="box" style="margin-top:18px">
+      <h3>🏆 Trova la sestina ottimale</h3>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:12px">
+        Testa tutte le sestine possibili tra i <strong>N numeri più frequenti</strong> e trova quella che avrebbe vinto di più nelle ultime estrazioni. Con top-20 sono 38.760 combinazioni — elaborazione in pochi secondi.
+      </div>
+      <div class="row">
+        <label>Pool numeri top: <select id="opt-pool">
+          <option value="15">top 15 (5.005 sestine)</option>
+          <option value="20" selected>top 20 (38.760 sestine)</option>
+          <option value="25">top 25 (177.100 sestine)</option>
+          <option value="30">top 30 (593.775 sestine — lento)</option>
+        </select></label>
+        <label>Su ultime: <input type="number" id="opt-win" value="50" min="10" max="500" style="width:65px"> est.</label>
+        <label>Giocati: <select id="opt-played">
+          <option value="6" selected>6</option>
+          <option value="7">7</option>
+          <option value="8">8</option>
+        </select></label>
+        <label><input type="checkbox" id="opt-baseonly"> Solo vincite Base</label>
+        <button class="pri" id="opt-btn" onclick="runOptimizer()">🏆 Ottimizza</button>
+      </div>
+      <div id="opt-progress" style="font-size:12px;color:var(--muted);display:none">
+        <span class="spin"></span> Elaborazione... <span id="opt-pct"></span>
+      </div>
+    </div>
+    <div id="opt-out"></div>
+  </div>
+
+  <!-- STATS -->
+  <div class="pane" id="pane-stats">
+    <div class="info">
+      <strong>Analisi statistica onesta:</strong> verifica se i dati mostrano pattern reali o rumore casuale.
+      Un p-value &lt; 0.05 indicherebbe una deviazione statistica significativa dal caso puro.
+      Tutte le analisi usano le estrazioni caricate.
+    </div>
+    <div class="box">
+      <h3>⚙️ Parametri analisi</h3>
+      <div class="row">
+        <label>Finestra: <input type="number" id="st-win" value="100" min="10" max="9999" style="width:70px"> estrazioni</label>
+        <button class="pri" onclick="runStats()">📈 Calcola</button>
+      </div>
+    </div>
+    <div id="stats-out"></div>
   </div>
 
 </div>
@@ -304,12 +353,16 @@ async function fetchData(manual = false) {
   document.getElementById('rbtn').disabled = true;
 
   try {
-    const url = proxyUrl(TARGET);
+    const url = proxyUrl(TARGET) + '&_t=' + Date.now();
     dbgLog('Fetch: ' + url.slice(0, 90) + '...');
     const ctrl = new AbortController();
     const tid = setTimeout(() => ctrl.abort(), 15000);
-    const r = await fetch(url, { signal: ctrl.signal });
-    clearTimeout(tid);
+    let r;
+    try {
+      r = await fetch(url, { signal: ctrl.signal, cache: 'no-store' });
+    } finally {
+      clearTimeout(tid);
+    }
 
     if (!r.ok) throw new Error('HTTP ' + r.status + ' dal proxy');
     const html = await r.text();
@@ -423,11 +476,11 @@ function toggleDbg(){
 
 /* ── TABS ── */
 function switchTab(name){
-  const ns=['freq','draws','predict','backtest'];
+  const ns=['freq','draws','predict','backtest','stats'];
   document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('on',ns[i]===name));
   document.querySelectorAll('.pane').forEach(p=>p.classList.remove('on'));
   document.getElementById('pane-'+name).classList.add('on');
-  if (name === 'predict') buildManualGrid();
+  if(name==='predict') buildManualGrid();
 }
 function setN(v){N=parseInt(v);document.getElementById('nval').textContent=N;renderFreq();}
 
@@ -775,9 +828,7 @@ function getPrize(giocati, hitsBase, hitsExtra) {
 
 function fmtEur(v) {
   if (!v) return '—';
-  if (v >= 1000000) return '€' + (v/1000000).toFixed(1) + 'M';
-  if (v >= 1000) return '€' + (v/1000).toFixed(0) + 'k';
-  return '€' + v;
+  return '€' + v.toLocaleString('it-IT');
 }
 
 /* ── BACKTEST (ora tiene separati base ed extra) ── */
@@ -932,6 +983,372 @@ function saveManualCombo() {
 function applyPreset() {
   const val = document.getElementById('bt-preset').value;
   document.getElementById('btin').value = val.replace(/,/g, ' ');
+}
+
+/* ── STATISTICAL ANALYSIS ── */
+function runStats() {
+  if (!draws.length) { alert('Prima carica i dati'); return; }
+  const win = Math.min(parseInt(document.getElementById('st-win').value) || 100, draws.length);
+  const sl = draws.slice(0, win);
+  const out = document.getElementById('stats-out');
+
+  // ── 1. Distribuzione frequenze (chi-quadro uniformità) ──
+  // H0: ogni numero ha la stessa probabilità di uscire in base (20/90 per estrazione)
+  const obsB = {}, obsE = {};
+  for (let i = 1; i <= 90; i++) { obsB[i] = 0; obsE[i] = 0; }
+  sl.forEach(d => {
+    d.base.forEach(n => obsB[n]++);
+    d.extra.forEach(n => obsE[n]++);
+  });
+
+  const expectedB = win * 20 / 90; // frequenza attesa per numero in base
+  const expectedE = win * 15 / 90; // frequenza attesa per numero in extra
+
+  let chi2B = 0, chi2E = 0;
+  for (let i = 1; i <= 90; i++) {
+    chi2B += Math.pow(obsB[i] - expectedB, 2) / expectedB;
+    chi2E += Math.pow(obsE[i] - expectedE, 2) / expectedE;
+  }
+  const df = 89; // gradi di libertà = 90-1
+
+  // p-value approssimato con formula Wilson-Hilferty per chi-quadro
+  function chi2pvalue(chi2, df) {
+    const x = Math.pow(chi2 / df, 1/3);
+    const mean = 1 - 2/(9*df);
+    const sd = Math.sqrt(2/(9*df));
+    const z = (x - mean) / sd;
+    // P(Z > z) approssimazione normale
+    return 1 - normalCDF(z);
+  }
+  function normalCDF(z) {
+    const t = 1 / (1 + 0.2316419 * Math.abs(z));
+    const d = 0.3989423 * Math.exp(-z*z/2);
+    const p = d * t * (0.3193815 + t * (-0.3565638 + t * (1.7814779 + t * (-1.8212560 + t * 1.3302744))));
+    return z > 0 ? 1 - p : p;
+  }
+
+  const pB = chi2pvalue(chi2B, df);
+  const pE = chi2pvalue(chi2E, df);
+
+  // ── 2. Autocorrelazione temporale ──
+  // Verifica se un numero che esce all'estrazione T ha più probabilità di uscire a T+1
+  // (cioè se c'è "memoria" nel generatore)
+  let autoCorr = 0, pairs = 0;
+  for (let j = 0; j < sl.length - 1; j++) {
+    const curr = new Set([...sl[j].base, ...sl[j].extra]);
+    const next = new Set([...sl[j+1].base, ...sl[j+1].extra]);
+    curr.forEach(n => { if (next.has(n)) autoCorr++; pairs++; });
+  }
+  const autoCorrRate = autoCorr / pairs;
+  const expectedAutoCorr = 35 / 90; // prob. attesa che un numero esca di nuovo
+  const autoCorrZ = (autoCorrRate - expectedAutoCorr) / Math.sqrt(expectedAutoCorr*(1-expectedAutoCorr)/pairs);
+  const autoCorrP = 2 * (1 - normalCDF(Math.abs(autoCorrZ))); // two-tailed
+
+  // ── 3. Test "ore calde" — alcune ore producono più uscite? ──
+  const hourCounts = {};
+  sl.forEach(d => {
+    const h = d.time ? parseInt(d.time.split(':')[0]) : -1;
+    if (h >= 0) hourCounts[h] = (hourCounts[h] || 0) + 1;
+  });
+  const hours = Object.entries(hourCounts).sort((a,b)=>a[0]-b[0]);
+  const avgPerHour = win / (hours.length || 1);
+  let chi2Hour = 0;
+  hours.forEach(([,c]) => chi2Hour += Math.pow(c - avgPerHour, 2) / avgPerHour);
+  const pHour = chi2pvalue(chi2Hour, Math.max(1, hours.length - 1));
+
+  // ── 4. Distribuzione gap (intervalli tra uscite) per numero più frequente ──
+  const hotNum = Object.entries(obsB).sort((a,b)=>b[1]-a[1])[0][0]*1;
+  const gaps = [];
+  let lastSeen = -1;
+  sl.forEach((d, idx) => {
+    if (d.base.includes(hotNum)) {
+      if (lastSeen >= 0) gaps.push(idx - lastSeen);
+      lastSeen = idx;
+    }
+  });
+  const avgGap = gaps.length ? gaps.reduce((a,b)=>a+b,0)/gaps.length : null;
+  const expectedGap = 90/20; // atteso = 4.5 estrazioni
+
+  // ── 5. Simulazione Monte Carlo: quante vincite con 6 numeri casuali? ──
+  const SIMS = 1000;
+  const giocati = 6;
+  let simWins = Array(giocati+1).fill(0);
+  for (let s = 0; s < SIMS; s++) {
+    // Genera 6 numeri casuali
+    const combo = [];
+    while (combo.length < giocati) {
+      const n = Math.floor(Math.random()*90)+1;
+      if (!combo.includes(n)) combo.push(n);
+    }
+    // Testa su tutte le estrazioni del campione
+    sl.forEach(d => {
+      const hits = combo.filter(n => d.base.includes(n)).length;
+      simWins[hits]++;
+    });
+  }
+  const simTotal = SIMS * sl.length;
+
+  // ── RENDER ──
+  function pBadge(p) {
+    if (p < 0.01) return `<span style="background:#b03030;color:#fff;padding:2px 7px;border-radius:4px;font-size:12px">p=${p.toFixed(3)} ⚠️ SIGNIFICATIVO</span>`;
+    if (p < 0.05) return `<span style="background:#b07010;color:#fff;padding:2px 7px;border-radius:4px;font-size:12px">p=${p.toFixed(3)} ⚠️ borderline</span>`;
+    return `<span style="background:#1a9e6e;color:#fff;padding:2px 7px;border-radius:4px;font-size:12px">p=${p.toFixed(3)} ✓ casuale</span>`;
+  }
+
+  function barChart(data, maxVal, color) {
+    return data.map(([label, val, exp]) => {
+      const pct = maxVal > 0 ? val/maxVal*100 : 0;
+      const expPct = maxVal > 0 ? exp/maxVal*100 : 0;
+      return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:3px;font-size:12px">
+        <div style="width:28px;text-align:right;color:var(--muted)">${label}</div>
+        <div style="flex:1;position:relative;height:16px;background:rgba(0,0,0,0.06);border-radius:3px">
+          <div style="position:absolute;height:100%;width:${pct}%;background:${color};border-radius:3px;opacity:0.8"></div>
+          <div style="position:absolute;height:100%;width:2px;left:${expPct}%;background:#333;opacity:0.4"></div>
+        </div>
+        <div style="width:60px;color:var(--text)">${val} <span style="color:var(--muted);font-size:10px">(att.${exp.toFixed(1)})</span></div>
+      </div>`;
+    }).join('');
+  }
+
+  // Top/bottom 5 numeri per frequenza base
+  const sorted = Object.entries(obsB).map(([n,c])=>({n:parseInt(n),c})).sort((a,b)=>b.c-a.c);
+  const top5 = sorted.slice(0,5);
+  const bot5 = sorted.slice(-5).reverse();
+
+  out.innerHTML = `
+  <div class="box">
+    <h3>1. Uniformità distribuzione — Test χ² (chi-quadro)</h3>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:12px">
+      H₀: ogni numero ha la stessa probabilità di uscire. Se il generatore è casuale, tutti i 90 numeri dovrebbero uscire circa <strong>${expectedB.toFixed(1)}</strong> volte in base e <strong>${expectedE.toFixed(1)}</strong> in extra su ${win} estrazioni.
+    </p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+      <div class="sc"><div class="lb">χ² Base</div><div class="vl" style="font-size:18px">${chi2B.toFixed(1)}</div><div style="margin-top:4px">${pBadge(pB)}</div></div>
+      <div class="sc"><div class="lb">χ² Extra</div><div class="vl" style="font-size:18px">${chi2E.toFixed(1)}</div><div style="margin-top:4px">${pBadge(pE)}</div></div>
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:8px">Top 5 numeri più frequenti in base (barra grigia = valore atteso):</div>
+    ${barChart(top5.map(x=>[x.n, x.c, expectedB]), top5[0]?.c||1, 'var(--acc)')}
+    <div style="font-size:12px;color:var(--muted);margin:8px 0">Bottom 5 numeri meno frequenti in base:</div>
+    ${barChart(bot5.map(x=>[x.n, x.c, expectedB]), top5[0]?.c||1, 'var(--red)')}
+  </div>
+
+  <div class="box">
+    <h3>2. Autocorrelazione temporale</h3>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:12px">
+      Un numero uscito all'estrazione T ha più probabilità di uscire a T+1? Se il generatore ha memoria, il tasso di ricomparsa sarebbe > ${(expectedAutoCorr*100).toFixed(1)}% atteso.
+    </p>
+    <div class="scards" style="margin-bottom:10px">
+      <div class="sc"><div class="lb">Tasso ricomparsa osservato</div><div class="vl" style="font-size:18px">${(autoCorrRate*100).toFixed(2)}%</div></div>
+      <div class="sc"><div class="lb">Tasso atteso (caso puro)</div><div class="vl" style="font-size:18px">${(expectedAutoCorr*100).toFixed(2)}%</div></div>
+      <div class="sc"><div class="lb">Z-score</div><div class="vl" style="font-size:18px">${autoCorrZ.toFixed(2)}</div></div>
+      <div class="sc"><div class="lb">p-value</div><div class="vl" style="font-size:14px;margin-top:4px">${pBadge(autoCorrP)}</div></div>
+    </div>
+    <p style="font-size:12px;color:var(--muted)">Analizzate ${pairs} coppie consecutive su ${win} estrazioni.</p>
+  </div>
+
+  <div class="box">
+    <h3>3. Pattern orari — le estrazioni di certe ore sono diverse?</h3>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:12px">
+      Verifica se alcune fasce orarie producono distribuzioni di numeri statisticamente diverse. Atteso: ~${avgPerHour.toFixed(1)} estrazioni per ora.
+    </p>
+    <div class="sc" style="display:inline-block;margin-bottom:12px"><div class="lb">χ² orario</div><div class="vl" style="font-size:18px">${chi2Hour.toFixed(1)}</div><div style="margin-top:4px">${pBadge(pHour)}</div></div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:6px">Estrazioni per ora:</div>
+    ${barChart(hours.map(([h,c])=>[h+'h', c, avgPerHour]), Math.max(...hours.map(([,c])=>c)), 'var(--amb)')}
+  </div>
+
+  <div class="box">
+    <h3>4. Gap medio del numero più frequente (#${hotNum})</h3>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:12px">
+      Intervallo medio tra due uscite consecutive del numero più frequente in base. Atteso teorico: <strong>${expectedGap.toFixed(1)}</strong> estrazioni.
+    </p>
+    <div class="scards">
+      <div class="sc"><div class="lb">Gap medio osservato</div><div class="vl">${avgGap ? avgGap.toFixed(1) : '—'}</div></div>
+      <div class="sc"><div class="lb">Gap atteso (teorico)</div><div class="vl">${expectedGap.toFixed(1)}</div></div>
+      <div class="sc"><div class="lb">N° uscite campione</div><div class="vl">${obsB[hotNum]}</div></div>
+      <div class="sc"><div class="lb">Gap min / max</div><div class="vl" style="font-size:16px">${gaps.length?Math.min(...gaps)+' / '+Math.max(...gaps):'—'}</div></div>
+    </div>
+  </div>
+
+  <div class="box">
+    <h3>5. Simulazione Monte Carlo — vincite attese con 6 numeri casuali</h3>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:12px">
+      ${SIMS} simulazioni di combinazioni casuali testate su ${win} estrazioni. Quante volte ci si aspetta di indovinare X numeri su 6?
+    </p>
+    ${barChart(
+      [0,1,2,3,4,5,6].map(k => {
+        const obs = simWins[k];
+        // Probabilità ipergeometrica: P(X=k) con N=90, K=20, n=6
+        function hyper(N,K,n,k){ return comb(K,k)*comb(N-K,n-k)/comb(N,n); }
+        function comb(n,k){ if(k<0||k>n)return 0; let r=1; for(let i=0;i<k;i++)r=r*(n-i)/(i+1); return r; }
+        const exp = hyper(90,20,6,k) * simTotal;
+        return [k+'/', obs, exp];
+      }),
+      simWins[0], 'var(--grn)'
+    )}
+    <p style="font-size:12px;color:var(--muted);margin-top:10px">
+      <strong>Probabilità fare 5/6 base:</strong> ~${(hyper(90,20,6,5)*100).toFixed(3)}% per estrazione →
+      su 100 est. probabilità di non farne nemmeno uno: <strong>${((1-hyper(90,20,6,5))**100*100).toFixed(1)}%</strong>
+    </p>
+  </div>
+
+  <div class="box" style="background:var(--amb-bg);border-color:var(--amb)">
+    <h3 style="color:var(--amb)">📋 Conclusione</h3>
+    <p style="font-size:13px;line-height:1.8">
+      ${(pB > 0.05 && pE > 0.05 && autoCorrP > 0.05) ?
+        '✅ <strong>Nessuna deviazione statistica significativa rilevata.</strong> I dati sono coerenti con un generatore casuale certificato. I pattern visivi che percepisci sono clustering naturale — eventi casuali si raggruppano sempre in modo che sembra non-casuale.' :
+        '⚠️ <strong>Rilevata almeno una deviazione statistica.</strong> Questo non significa necessariamente che il generatore sia prevedibile — potrebbe essere un effetto del campione ridotto. Servirebbe un campione molto più grande (>10.000 estrazioni) per trarre conclusioni.'
+      }
+      <br><br>
+      <strong>Ricorda:</strong> anche se un pattern fosse reale, il vantaggio della casa (~35% sul 10eLotto) rende impossibile un profitto sistematico nel lungo periodo.
+    </p>
+  </div>`;
+
+  // Helper globale per Monte Carlo inline
+  function hyper(N,K,n,k){ function comb(n,k){ if(k<0||k>n)return 0; let r=1; for(let i=0;i<k;i++)r=r*(n-i)/(i+1); return r; } return comb(K,k)*comb(N-K,n-k)/comb(N,n); }
+}
+
+/* ── OPTIMIZER ── */
+function runOptimizer() {
+  if (!draws.length) { alert('Prima carica i dati'); return; }
+
+  const poolSize = parseInt(document.getElementById('opt-pool').value);
+  const winN = Math.min(parseInt(document.getElementById('opt-win').value) || 50, draws.length);
+  const played = parseInt(document.getElementById('opt-played').value);
+  const sl = draws.slice(0, winN);
+
+  // Pool: numeri più frequenti (base×2 + extra×1)
+  const freq = {};
+  for (let i = 1; i <= 90; i++) freq[i] = 0;
+  sl.forEach(d => {
+    d.base.forEach(n => freq[n] += 2);
+    d.extra.forEach(n => freq[n] += 1);
+  });
+  const pool = Object.entries(freq)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, poolSize)
+    .map(([n]) => parseInt(n));
+
+  // Genera TUTTE le combinazioni in array (più veloce del generatore per chunk)
+  function getAllCombos(arr, k) {
+    const result = [];
+    function bt(start, current) {
+      if (current.length === k) { result.push([...current]); return; }
+      for (let i = start; i <= arr.length - (k - current.length); i++) {
+        current.push(arr[i]);
+        bt(i + 1, current);
+        current.pop();
+      }
+    }
+    bt(0, []);
+    return result;
+  }
+
+  const baseOnly = document.getElementById('opt-baseonly').checked;
+
+  document.getElementById('opt-progress').style.display = 'block';
+  document.getElementById('opt-btn').disabled = true;
+  document.getElementById('opt-out').innerHTML = '';
+  document.getElementById('opt-pct').textContent = 'Generazione combinazioni...';
+
+  // Usa setTimeout per non bloccare UI durante la generazione
+  setTimeout(() => {
+    const allCombos = getAllCombos(pool, played);
+    const total = allCombos.length;
+    document.getElementById('opt-pct').textContent = `0 / ${total.toLocaleString()} (0%)`;
+
+    const allResults = [];
+    const CHUNK = 2000;
+    let idx = 0;
+
+    function processChunk() {
+      const end = Math.min(idx + CHUNK, total);
+      for (; idx < end; idx++) {
+        const combo = allCombos[idx];
+        let tot = 0;
+        sl.forEach(d => {
+          const hB = combo.filter(n => d.base.includes(n)).length;
+          const hE = combo.filter(n => d.extra.includes(n)).length;
+          const p = getPrize(played, hB, hE);
+          tot += baseOnly ? p.base : Math.max(p.base, p.extra);
+        });
+        allResults.push({ combo, tot });
+      }
+
+      document.getElementById('opt-pct').textContent =
+        `${idx.toLocaleString()} / ${total.toLocaleString()} (${Math.round(idx/total*100)}%)`;
+
+      if (idx < total) {
+        setTimeout(processChunk, 0); // yield al browser ogni chunk
+      } else {
+        finalize(allResults, sl, played, baseOnly);
+      }
+    }
+
+    processChunk();
+  }, 50);
+}
+
+function finalize(allResults, sl, played, baseOnly) {
+  allResults.sort((a, b) => b.tot - a.tot);
+  const top5 = allResults.slice(0, 20);
+  const best = top5[0];
+
+  document.getElementById('opt-progress').style.display = 'none';
+  document.getElementById('opt-btn').disabled = false;
+
+  // Dettaglio righe per la sestina migliore
+  const bestRows = sl.map(d => {
+    const hBase = best.combo.filter(n => d.base.includes(n));
+    const hExtra = best.combo.filter(n => d.extra.includes(n));
+    const p = getPrize(played, hBase.length, hExtra.length);
+    const win = baseOnly ? p.base : Math.max(p.base, p.extra);
+    return { draw: d, hBase, hExtra, _prize: p, _win: win,
+             hits: [...new Set([...hBase,...hExtra])], count: hBase.length + hExtra.length };
+  });
+
+  // Aggiungi top5 ai preset
+  const sel = document.getElementById('bt-preset');
+  top5.forEach((r, i) => {
+    const val = r.combo.join(',');
+    let exists = false;
+    for (const opt of sel.options) { if (opt.value === val) { exists = true; break; } }
+    if (!exists) {
+      const opt = document.createElement('option');
+      opt.value = val;
+      opt.textContent = `🏆 #${i+1}: ${r.combo.join(' · ')} (${fmtEur(r.tot)})`;
+      sel.appendChild(opt);
+    }
+  });
+
+  document.getElementById('opt-out').innerHTML = `
+    <div class="box" style="margin-top:14px">
+      <h3>🏆 Top 20 combinazioni ottimali${baseOnly ? ' · solo Base' : ' · Base+Extra'}</h3>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:14px">
+        Testate ${allResults.length.toLocaleString()} combinazioni su ${sl.length} estrazioni · aggiunte al menu Backtest
+      </p>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:20px">
+        ${top5.map((r, i) => `
+          <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;
+            background:${i===0?'var(--amb-bg)':'var(--bg)'};
+            border:.5px solid ${i===0?'var(--amb)':'var(--border)'};border-radius:var(--r)">
+            <div style="font-size:20px;font-weight:700;color:${i===0?'var(--amb)':'var(--muted)'};min-width:30px">#${i+1}</div>
+            <div style="flex:1;display:flex;gap:4px;flex-wrap:wrap">
+              ${r.combo.map(n=>`<span class="pill pb">${n}</span>`).join('')}
+            </div>
+            <div style="text-align:right;white-space:nowrap">
+              <div style="font-size:18px;font-weight:600;color:${i===0?'var(--amb)':'var(--acc)'}">${fmtEur(r.tot)}</div>
+              <div style="font-size:11px;color:var(--muted)">su ${sl.length} est.</div>
+            </div>
+          </div>`).join('')}
+      </div>
+      ${btHtml(bestRows, best.combo, `🏆 Dettaglio #1: ${best.combo.join(' — ')}`)}
+    </div>`;
+}
+
+function comb(n, k) {
+  if (k < 0 || k > n) return 0;
+  let r = 1;
+  for (let i = 0; i < k; i++) r = r * (n - i) / (i + 1);
+  return Math.round(r);
 }
 
 /* ── BOOT (build picker grid on predict tab open) ── */
