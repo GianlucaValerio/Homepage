@@ -1658,11 +1658,16 @@ async function loadExtraDays() {
     const mm   = String(date.getMonth()+1).padStart(2,'0');
     const dd   = String(date.getDate()).padStart(2,'0');
     const dateStr = `${yyyy}-${mm}-${dd}`;
-    // lottologia usa: /10elotto5minuti/archivio-estrazioni/?date=YYYY-MM-DD
-    const urls = [
-      `https://lottologia.com/10elotto5minuti/archivio-estrazioni/?date=${dateStr}`,
-      `https://lottologia.com/10elotto5minuti/tutte-le-estrazioni?date=${dateStr}`,
-    ];
+
+    // lottologia usa URL progressivi: estrazioni-ieri, estrazioni-2gg-fa, estrazioni-3gg-fa...
+    let histUrl;
+    if (d === 1) {
+      histUrl = 'https://lottologia.com/10elotto5minuti/estrazioni-ieri';
+    } else {
+      histUrl = `https://lottologia.com/10elotto5minuti/estrazioni-${d}gg-fa`;
+    }
+    const urls = [histUrl];
+    status.innerHTML = `<span class="spin"></span> Caricando ${dateStr} (${d}/${daysBack}): ${histUrl.split('/').pop()}...`;
 
     let parsed = [];
     for (const url of urls) {
