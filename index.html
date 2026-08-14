@@ -151,6 +151,7 @@ tr:hover td{background:var(--bg)}
     <button class="tab"    onclick="switchTab('predict')">🔮 Predizione</button>
     <button class="tab"    onclick="switchTab('backtest')">🧪 Backtest</button>
     <button class="tab"    onclick="switchTab('stats')">📈 Statistica</button>
+    <button class="tab"    onclick="switchTab('cluster')">🔴 Cluster</button>
   </div>
 
   <!-- FREQ -->
@@ -301,6 +302,75 @@ tr:hover td{background:var(--bg)}
       </div>
     </div>
     <div id="stats-out"></div>
+  </div>
+
+  <!-- CLUSTER -->
+  <div class="pane" id="pane-cluster">
+    <div class="info">
+      <strong>Analisi Cluster:</strong> il pool viene calibrato su estrazioni <em>passate</em> (finestra di calibrazione),
+      poi i cluster vengono cercati su estrazioni <em>più recenti</em> (finestra di test) — i due campioni sono separati.
+      <strong>Calibrazione + Test ≤ estrazioni disponibili.</strong>
+      Per un'analisi affidabile servono almeno 3 giorni di dati (~750 estrazioni).
+    </div>
+
+    <!-- CARICATORE MULTI-GIORNO -->
+    <div class="box" style="border-color:var(--acc)">
+      <h3>📅 Carica più giorni di dati</h3>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:12px">
+        Lottologia.com ha lo storico per data. Carica oggi + giorni precedenti per avere un campione robusto.
+        I dati vengono <strong>accumulati</strong> a quelli già caricati.
+      </p>
+      <div class="row">
+        <label>Giorni aggiuntivi da caricare:
+          <select id="extra-days">
+            <option value="1">+ ieri (1 giorno)</option>
+            <option value="2" selected>+ 2 giorni fa</option>
+            <option value="3">+ 3 giorni fa</option>
+            <option value="4">+ 4 giorni fa</option>
+            <option value="5">+ 5 giorni fa</option>
+            <option value="6">+ 6 giorni fa</option>
+            <option value="7">+ 7 giorni fa</option>
+          </select>
+        </label>
+        <button class="pri" id="load-days-btn" onclick="loadExtraDays()">📥 Carica giorni storici</button>
+      </div>
+      <div id="load-days-status" style="font-size:12px;color:var(--muted);margin-top:8px"></div>
+    </div>
+
+    <div class="box">
+      <h3>⚙️ Parametri cluster</h3>
+      <div class="row">
+        <label>Pool top-N: <select id="cl-pool">
+          <option value="10">top 10</option>
+          <option value="15" selected>top 15</option>
+          <option value="20">top 20</option>
+          <option value="25">top 25</option>
+        </select></label>
+        <label>Soglia cluster: <select id="cl-thresh">
+          <option value="4">≥ 4 in base</option>
+          <option value="5" selected>≥ 5 in base</option>
+          <option value="6">≥ 6 in base</option>
+          <option value="7">≥ 7 in base</option>
+        </select></label>
+        <button onclick="autoClusterParams()" style="font-size:12px;padding:4px 10px">⚡ Auto</button>
+      </div>
+      <div class="row">
+        <label>Calibrazione:
+          <input type="number" id="cl-calib" value="200" min="30" max="9999" style="width:70px"
+            oninput="validateClusterParams()"> est.
+        </label>
+        <label>Test:
+          <input type="number" id="cl-test" value="50" min="10" max="500" style="width:70px"
+            oninput="validateClusterParams()"> est.
+        </label>
+        <span id="cl-warn" style="font-size:12px;color:var(--red);font-weight:500"></span>
+      </div>
+      <div class="row">
+        <button class="pri" id="cl-btn" onclick="runCluster()">🔴 Analizza</button>
+        <span style="font-size:12px;color:var(--muted)" id="cl-info"></span>
+      </div>
+    </div>
+    <div id="cluster-out"></div>
   </div>
 
 </div>
@@ -476,11 +546,12 @@ function toggleDbg(){
 
 /* ── TABS ── */
 function switchTab(name){
-  const ns=['freq','draws','predict','backtest','stats'];
+  const ns=['freq','draws','predict','backtest','stats','cluster'];
   document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('on',ns[i]===name));
   document.querySelectorAll('.pane').forEach(p=>p.classList.remove('on'));
   document.getElementById('pane-'+name).classList.add('on');
   if(name==='predict') buildManualGrid();
+  if(name==='cluster') validateClusterParams();
 }
 function setN(v){N=parseInt(v);document.getElementById('nval').textContent=N;renderFreq();}
 
@@ -1349,6 +1420,325 @@ function comb(n, k) {
   let r = 1;
   for (let i = 0; i < k; i++) r = r * (n - i) / (i + 1);
   return Math.round(r);
+}
+
+/* ── CLUSTER ANALYSIS ── */
+function runCluster() {
+  if (!draws.length) { alert('Prima carica i dati'); return; }
+
+  const poolSize = parseInt(document.getElementById('cl-pool').value);
+  const thresh   = parseInt(document.getElementById('cl-thresh').value);
+  const calibN   = Math.min(parseInt(document.getElementById('cl-calib').value)||200, draws.length);
+  const testN    = Math.min(parseInt(document.getElementById('cl-test').value)||50, draws.length - calibN);
+
+  if (testN < 5) { alert('Non abbastanza estrazioni. Premi Auto.'); return; }
+
+  const testSlDesc  = draws.slice(0, testN);
+  const calibSlDesc = draws.slice(testN, testN + calibN);
+
+  document.getElementById('cl-info').textContent =
+    `Calibrazione: ${calibSlDesc.length} est. (#${calibSlDesc[calibSlDesc.length-1]?.id}–#${calibSlDesc[0]?.id}) · Test: ${testSlDesc.length} est. (#${testSlDesc[testSlDesc.length-1]?.id}–#${testSlDesc[0]?.id})`;
+
+  // Pool calcolato solo sulla calibrazione
+  const freq = {};
+  for (let i=1;i<=90;i++) freq[i]=0;
+  calibSlDesc.forEach(d => {
+    d.base.forEach(n => freq[n]+=2);
+    d.extra.forEach(n => freq[n]+=1);
+  });
+  const pool = new Set(
+    Object.entries(freq).sort((a,b)=>b[1]-a[1]).slice(0,poolSize).map(([n])=>parseInt(n))
+  );
+  const poolArr = [...pool].sort((a,b)=>a-b);
+
+  // Score su test in ordine cronologico
+  const testChron = [...testSlDesc].reverse();
+  const scored = testChron.map((d, chronIdx) => {
+    const hitsBase  = d.base.filter(n => pool.has(n));
+    const hitsExtra = d.extra.filter(n => pool.has(n));
+    return { draw: d, chronIdx, hitsBase, hitsExtra, score: hitsBase.length };
+  });
+
+  const clusters = scored.filter(s => s.score >= thresh);
+
+  const gaps = [];
+  for (let i=1;i<clusters.length;i++)
+    gaps.push(clusters[i].chronIdx - clusters[i-1].chronIdx);
+  const avgGap = gaps.length ? gaps.reduce((a,b)=>a+b,0)/gaps.length : null;
+  const minGap = gaps.length ? Math.min(...gaps) : null;
+  const maxGap = gaps.length ? Math.max(...gaps) : null;
+
+  const lastCluster = clusters.length ? clusters[clusters.length-1] : null;
+  const estFromLast = lastCluster!=null ? (scored.length-1-lastCluster.chronIdx) : null;
+  const nextEst     = (avgGap!=null&&estFromLast!=null) ? Math.round(avgGap-estFromLast) : null;
+
+  const hourMap = {};
+  clusters.forEach(c => {
+    const h = c.draw.time ? parseInt(c.draw.time.split(':')[0]) : -1;
+    if (h>=0) hourMap[h]=(hourMap[h]||0)+1;
+  });
+
+  const gapBuckets = {};
+  gaps.forEach(g => { const k=Math.min(g,20); gapBuckets[k]=(gapBuckets[k]||0)+1; });
+
+  // FASE 2: numeri frequenti NEI CLUSTER
+  const clFreq = {};
+  for (let i=1;i<=90;i++) clFreq[i]=0;
+  clusters.forEach(c => {
+    c.hitsBase.forEach(n => clFreq[n]+=2);
+    c.hitsExtra.forEach(n => clFreq[n]+=1);
+  });
+  const clTop15 = Object.entries(clFreq)
+    .filter(([,v])=>v>0)
+    .sort((a,b)=>b[1]-a[1]).slice(0,15).map(([n])=>parseInt(n));
+  const clSurprise = clTop15.filter(n => !pool.has(n));
+
+  // FASE 3: sestina ottimale sui soli cluster
+  let bestClCombo=null, bestClEur=0;
+  if (clusters.length>=3 && clTop15.length>=6) {
+    const clDraws = clusters.map(c=>c.draw);
+    function getAllC6(arr){
+      const res=[];
+      function bt(s,cur){
+        if(cur.length===6){res.push([...cur]);return;}
+        for(let i=s;i<=arr.length-(6-cur.length);i++){cur.push(arr[i]);bt(i+1,cur);cur.pop();}
+      }
+      bt(0,[]);return res;
+    }
+    getAllC6(clTop15).forEach(combo => {
+      let tot=0;
+      clDraws.forEach(d => {
+        const hB=combo.filter(n=>d.base.includes(n)).length;
+        const hE=combo.filter(n=>d.extra.includes(n)).length;
+        tot+=Math.max(getPrize(6,hB,hE).base,getPrize(6,hB,hE).extra);
+      });
+      if(tot>bestClEur){bestClEur=tot;bestClCombo=combo;}
+    });
+    if (bestClCombo) {
+      const sel=document.getElementById('bt-preset');
+      const val=bestClCombo.join(',');
+      let exists=false;
+      for(const opt of sel.options){if(opt.value===val){exists=true;break;}}
+      if(!exists){
+        const opt=document.createElement('option');
+        opt.value=val;
+        opt.textContent='🔴 Cluster: '+bestClCombo.join(' · ')+' ('+fmtEur(bestClEur)+')';
+        sel.appendChild(opt);
+      }
+    }
+  }
+
+  const now=new Date(), nowH=now.getHours();
+  const nextClusterHour = Object.entries(hourMap)
+    .filter(([h])=>parseInt(h)>nowH)
+    .sort((a,b)=>b[1]-a[1])[0];
+
+  const maxScore=Math.max(...scored.map(s=>s.score),1);
+  function scoreBar(score){
+    const w=Math.round(score/maxScore*100);
+    const col=score>=thresh?'var(--red)':score>=thresh-1?'var(--amb)':'var(--acc)';
+    return '<div style="display:flex;align-items:center;gap:4px"><div style="width:18px;text-align:right;font-weight:700;font-size:12px;color:'+col+'">'+score+'</div><div style="width:60px;height:7px;background:rgba(0,0,0,0.08);border-radius:3px"><div style="height:100%;width:'+w+'%;background:'+col+';border-radius:3px"></div></div></div>';
+  }
+
+  // FASE 1 status
+  let p1c,p1i,p1t,p1m;
+  if (!avgGap||clusters.length<2){
+    p1c='var(--muted)';p1i='⚪';p1t='Dati insufficienti';p1m='Servono almeno 2 cluster.';
+  } else if (nextEst<=0){
+    p1c='var(--red)';p1i='🔴';p1t='FINESTRA ATTIVA — sei nell\'ondata';
+    p1m='Passate '+estFromLast+' est. dall\'ultimo cluster. Gap medio: '+avgGap.toFixed(1)+'. Potresti essere in piena ondata.';
+  } else if (nextEst<=3){
+    p1c='var(--amb)';p1i='🟠';p1t='Finestra imminente (~'+nextEst+' est., ~'+(nextEst*5)+' min)';
+    p1m='Ultimo cluster '+estFromLast+' est. fa. Gap medio '+avgGap.toFixed(1)+', range '+minGap+'-'+maxGap+'.';
+  } else {
+    p1c='var(--grn)';p1i='🟢';p1t='Fuori finestra — prossima tra ~'+nextEst+' estrazioni (~'+Math.round(nextEst*5/60*10)/10+' ore)';
+    p1m='Ultimo cluster '+estFromLast+' est. fa. Gap medio '+avgGap.toFixed(1)+'. Non è il momento — aspetta.';
+  }
+
+  const hourRows = Object.entries(hourMap).sort((a,b)=>parseInt(a[0])-parseInt(b[0])).map(([h,c])=>{
+    const maxC=Math.max(...Object.values(hourMap));
+    const isNow=parseInt(h)===nowH, isPast=parseInt(h)<nowH;
+    return '<div style="display:flex;align-items:center;gap:8px;font-size:12px;'+(isNow?'font-weight:600':'')+'"><div style="width:42px;text-align:right;color:'+(isNow?'var(--red)':isPast?'var(--muted)':'var(--text)')+'">'+h+':xx'+(isNow?' ◀':'')+'</div><div style="flex:1;height:13px;background:rgba(0,0,0,0.06);border-radius:3px"><div style="height:100%;width:'+Math.round(c/maxC*100)+'%;background:'+(isPast?'#ccc':isNow?'var(--red)':'var(--acc)')+';border-radius:3px;opacity:.85"></div></div><div style="width:20px;font-weight:600;color:'+(isPast?'var(--muted)':isNow?'var(--red)':'var(--acc)')+'">'+c+'</div><div style="font-size:10px;color:var(--muted);width:60px">'+(isPast?'passata':isNow?'◀ ora':'futura')+'</div></div>';
+  }).join('');
+
+  const clNumHtml = clTop15.map(n=>{
+    const isSurp=!pool.has(n);
+    return '<div style="text-align:center"><span class="pill '+(isSurp?'pe':'pb')+'" style="font-size:12px;display:block;margin-bottom:2px">'+n+'</span><span style="font-size:9px;color:var(--muted)">'+clFreq[n]+'</span></div>';
+  }).join('');
+
+  const scoreRows = [...scored].reverse().map(s=>{
+    return '<div style="display:flex;align-items:center;gap:6px;padding:2px 4px;border-radius:4px;'+(s.score>=thresh?'background:rgba(176,48,48,0.07);':'')+'"><div style="width:36px;font-size:10px;color:var(--muted);text-align:right">#'+s.draw.id+'</div><div style="width:36px;font-size:10px;color:var(--muted)">'+s.draw.time+'</div>'+scoreBar(s.score)+'<div style="display:flex;gap:2px;flex-wrap:wrap;flex:1">'+s.hitsBase.map(n=>'<span class="pill pb" style="font-size:10px;padding:1px 4px">'+n+'</span>').join('')+s.hitsExtra.map(n=>'<span class="pill pe" style="font-size:10px;padding:1px 4px">'+n+'</span>').join('')+'</div></div>';
+  }).join('');
+
+  const html = `
+  <div class="box" style="border-left:4px solid ${p1c}">
+    <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px">
+      <span style="font-size:26px;line-height:1">${p1i}</span>
+      <div>
+        <div style="font-size:15px;font-weight:600;color:${p1c}">FASE 1 — TIMING: ${p1t}</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:3px">${p1m}</div>
+      </div>
+    </div>
+    <div class="scards" style="margin-bottom:12px">
+      <div class="sc"><div class="lb">Cluster trovati</div><div class="vl" style="color:var(--red)">${clusters.length}</div></div>
+      <div class="sc"><div class="lb">Gap medio</div><div class="vl">${avgGap?avgGap.toFixed(1)+' est.':'—'}</div></div>
+      <div class="sc"><div class="lb">Gap min/max</div><div class="vl" style="font-size:16px">${minGap??'—'}/${maxGap??'—'}</div></div>
+      <div class="sc"><div class="lb">Dall'ultimo</div><div class="vl" style="color:${p1c}">${estFromLast!=null?estFromLast+' est.':'—'}</div></div>
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:6px">Pattern orario storico (ora corrente: ${nowH}:${String(now.getMinutes()).padStart(2,'0')}):</div>
+    <div style="display:flex;flex-direction:column;gap:3px;margin-bottom:8px">${hourRows}</div>
+    ${nextClusterHour?`<div style="font-size:12px;padding:6px 10px;background:var(--acc-bg);border-radius:var(--r);color:var(--acc-dk)">
+      📅 Prossima fascia oraria con cluster storici: <strong>${nextClusterHour[0]}:xx</strong> (${nextClusterHour[1]} cluster in quella fascia nel campione)
+    </div>`:''}
+  </div>
+
+  <div class="box" style="border-left:4px solid var(--amb)">
+    <div style="font-size:15px;font-weight:600;color:var(--amb);margin-bottom:8px">🟠 FASE 2 — NUMERI: cosa esce durante i cluster?</div>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:10px">
+      Numeri che emergono più spesso nelle estrazioni cluster — non nella media generale.
+      Questi sono il tuo universo quando sei in finestra.
+    </p>
+    ${clusters.length<3?'<p style="color:var(--muted);font-size:12px">Servono almeno 3 cluster.</p>':`
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">${clNumHtml}</div>
+    ${clSurprise.length>0?`<div style="font-size:12px;padding:7px 11px;background:var(--green-bg);border-radius:var(--r);color:var(--grn);margin-bottom:8px">
+      ✨ <strong>Numeri "sorpresa"</strong> — escono nei cluster ma non nel pool generale: <strong>${clSurprise.join(', ')}</strong>
+    </div>`:''}
+    <div style="font-size:12px;color:var(--muted)">Distribuzione gap: ${Object.entries(gapBuckets).sort((a,b)=>parseInt(a)-parseInt(b)).map(([k,c])=>(k==20?'≥20':k)+' est.('+c+')').join(' · ')}</div>`}
+  </div>
+
+  <div class="box" style="border-left:4px solid var(--grn)">
+    <div style="font-size:15px;font-weight:600;color:var(--grn);margin-bottom:8px">🟢 FASE 3 — SESTINA: cosa giocare quando sei in finestra</div>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:12px">
+      Ottimale costruita sui numeri della Fase 2 e testata <strong>solo sulle estrazioni cluster</strong>.
+      <strong>Giocala solo quando la Fase 1 dice finestra attiva o imminente.</strong>
+    </p>
+    ${!bestClCombo?'<p style="color:var(--muted);font-size:12px">Servono almeno 3 cluster e 6 numeri per calcolare la sestina.</p>':`
+    <div style="padding:14px;background:var(--green-bg);border:.5px solid var(--grn);border-radius:var(--r);margin-bottom:10px">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+        ${bestClCombo.map(n=>'<div style="width:42px;height:42px;border-radius:50%;background:var(--grn);color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600">'+n+'</div>').join('')}
+      </div>
+      <div style="font-size:14px;font-weight:600;color:var(--grn)">${fmtEur(bestClEur)} simulati su ${clusters.length} estrazioni cluster</div>
+    </div>
+    <div style="font-size:12px;color:var(--amb);background:var(--amb-bg);padding:8px 12px;border-radius:var(--r);margin-bottom:10px">
+      ⚠️ Questa sestina è valida SOLO in finestra cluster. Fuori finestra la logica non regge.
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button onclick="document.getElementById('btin').value='${bestClCombo.join(' ')}';switchTab('backtest')">🧪 Backtest questa sestina</button>
+      <button onclick="navigator.clipboard&&navigator.clipboard.writeText('${bestClCombo.join(' ')}')">📋 Copia numeri</button>
+    </div>`}
+  </div>
+
+  <div class="box">
+    <div style="cursor:pointer;font-size:14px;font-weight:500" onclick="var el=this.nextElementSibling;el.style.display=el.style.display==='none'?'block':'none'">
+      📉 Score per estrazione — clicca per espandere ▾
+    </div>
+    <div style="display:none;margin-top:10px">
+      <p style="font-size:12px;color:var(--muted);margin-bottom:8px">Rosso = cluster (≥${thresh} numeri del pool in base).</p>
+      <div style="display:flex;flex-direction:column;gap:2px">${scoreRows}</div>
+    </div>
+  </div>`;
+
+  document.getElementById('cluster-out').innerHTML = html;
+}
+
+/* ── MULTI-DAY LOADER ── */
+// lottologia URL per data specifica: /10elotto5minuti/estrazioni/YYYY-MM-DD
+// oppure /estrazioni-ieri per ieri
+async function loadExtraDays() {
+  const daysBack = parseInt(document.getElementById('extra-days').value);
+  const btn = document.getElementById('load-days-btn');
+  const status = document.getElementById('load-days-status');
+  btn.disabled = true;
+
+  let loaded = 0, failed = 0;
+  for (let d = 1; d <= daysBack; d++) {
+    const date = new Date();
+    date.setDate(date.getDate() - d);
+    const yyyy = date.getFullYear();
+    const mm   = String(date.getMonth()+1).padStart(2,'0');
+    const dd   = String(date.getDate()).padStart(2,'0');
+    const dateStr = `${yyyy}-${mm}-${dd}`;
+    const url = `https://lottologia.com/10elotto5minuti/tutte-le-estrazioni?data=${dateStr}`;
+
+    status.innerHTML = `<span class="spin"></span> Caricando ${dateStr} (${d}/${daysBack})...`;
+
+    try {
+      const proxyUrl = PROXY_URL + '?url=' + encodeURIComponent(url) + '&_t=' + Date.now();
+      const ctrl = new AbortController();
+      const tid = setTimeout(() => ctrl.abort(), 15000);
+      let r;
+      try { r = await fetch(proxyUrl, { signal: ctrl.signal, cache: 'no-store' }); }
+      finally { clearTimeout(tid); }
+
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const html = await r.text();
+      dbgLog(`Day ${dateStr}: ${html.length} chars`);
+
+      const parsed = parseHtml(html);
+      dbgLog(`Day ${dateStr}: ${parsed.length} estrazioni`);
+
+      if (parsed.length > 0) {
+        // Aggiungi solo quelle non già presenti (per id)
+        const existingIds = new Set(draws.map(d => d.id));
+        const newDraws = parsed.filter(d => !existingIds.has(d.id));
+        // Le estrazioni storiche vanno in FONDO (sono più vecchie)
+        draws = [...draws, ...newDraws];
+        draws.sort((a,b) => b.id - a.id); // ordine desc: più recente prima
+        loaded += newDraws.length;
+        dbgLog(`Day ${dateStr}: aggiunte ${newDraws.length} estrazioni nuove`);
+      }
+    } catch(e) {
+      dbgLog(`Day ${dateStr} FAIL: ${e.message}`);
+      failed++;
+    }
+
+    // Piccola pausa tra le richieste
+    await new Promise(res => setTimeout(res, 500));
+  }
+
+  // Aggiorna UI
+  const total = draws.length;
+  setStatus('ok', `${total} estrazioni totali · ultima #${draws[0]?.id} ore ${draws[0]?.time}`);
+  setTime();
+  render();
+  validateClusterParams();
+
+  status.innerHTML = loaded > 0
+    ? `✅ Caricate ${loaded} estrazioni storiche · Totale: <strong>${total} estrazioni</strong>${failed>0?' · '+failed+' giorni falliti':''}`
+    : `⚠️ Nessuna nuova estrazione trovata${failed>0?' ('+failed+' giorni falliti)':''} — il sito potrebbe usare URL diversi per lo storico`;
+
+  btn.disabled = false;
+  autoClusterParams(); // ricalcola auto con il nuovo totale
+}
+
+/* ── CLUSTER PARAM VALIDATION ── */
+function validateClusterParams() {
+  if (!draws.length) return;
+  const total = draws.length;
+  const calib = parseInt(document.getElementById('cl-calib').value) || 0;
+  const test  = parseInt(document.getElementById('cl-test').value)  || 0;
+  const sum   = calib + test;
+  const warn  = document.getElementById('cl-warn');
+  const btn   = document.getElementById('cl-btn');
+  if (sum > total) {
+    warn.textContent = `⚠️ ${calib} + ${test} = ${sum} > ${total} disponibili — riduci i valori`;
+    btn.disabled = true;
+  } else {
+    warn.textContent = `✓ ${calib} + ${test} = ${sum} / ${total} estrazioni`;
+    warn.style.color = 'var(--grn)';
+    btn.disabled = false;
+  }
+}
+
+function autoClusterParams() {
+  if (!draws.length) { alert('Prima carica i dati'); return; }
+  const total = draws.length;
+  // Regola: test = 25% del totale (min 20, max 100), calibrazione = resto
+  const test  = Math.min(100, Math.max(20, Math.floor(total * 0.25)));
+  const calib = total - test;
+  document.getElementById('cl-calib').value = calib;
+  document.getElementById('cl-test').value  = test;
+  validateClusterParams();
 }
 
 /* ── BOOT (build picker grid on predict tab open) ── */
