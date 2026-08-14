@@ -1658,37 +1658,38 @@ async function loadExtraDays() {
     const mm   = String(date.getMonth()+1).padStart(2,'0');
     const dd   = String(date.getDate()).padStart(2,'0');
     const dateStr = `${yyyy}-${mm}-${dd}`;
-    const url = `https://lottologia.com/10elotto5minuti/tutte-le-estrazioni?data=${dateStr}`;
+    // lottologia usa: /10elotto5minuti/archivio-estrazioni/?date=YYYY-MM-DD
+    const urls = [
+      `https://lottologia.com/10elotto5minuti/archivio-estrazioni/?date=${dateStr}`,
+      `https://lottologia.com/10elotto5minuti/tutte-le-estrazioni?date=${dateStr}`,
+    ];
 
-    status.innerHTML = `<span class="spin"></span> Caricando ${dateStr} (${d}/${daysBack})...`;
-
-    try {
-      const proxyUrl = PROXY_URL + '?url=' + encodeURIComponent(url) + '&_t=' + Date.now();
-      const ctrl = new AbortController();
-      const tid = setTimeout(() => ctrl.abort(), 15000);
-      let r;
-      try { r = await fetch(proxyUrl, { signal: ctrl.signal, cache: 'no-store' }); }
-      finally { clearTimeout(tid); }
-
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      const html = await r.text();
-      dbgLog(`Day ${dateStr}: ${html.length} chars`);
-
-      const parsed = parseHtml(html);
-      dbgLog(`Day ${dateStr}: ${parsed.length} estrazioni`);
-
-      if (parsed.length > 0) {
-        // Aggiungi solo quelle non già presenti (per id)
-        const existingIds = new Set(draws.map(d => d.id));
-        const newDraws = parsed.filter(d => !existingIds.has(d.id));
-        // Le estrazioni storiche vanno in FONDO (sono più vecchie)
-        draws = [...draws, ...newDraws];
-        draws.sort((a,b) => b.id - a.id); // ordine desc: più recente prima
-        loaded += newDraws.length;
-        dbgLog(`Day ${dateStr}: aggiunte ${newDraws.length} estrazioni nuove`);
+    let parsed = [];
+    for (const url of urls) {
+      try {
+        const proxyUrl = PROXY_URL + '?url=' + encodeURIComponent(url) + '&_t=' + Date.now();
+        const ctrl = new AbortController();
+        const tid = setTimeout(() => ctrl.abort(), 15000);
+        let r;
+        try { r = await fetch(proxyUrl, { signal: ctrl.signal, cache: 'no-store' }); }
+        finally { clearTimeout(tid); }
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const html = await r.text();
+        dbgLog(`${dateStr} (${url.split('/').pop()}): ${html.length} chars`);
+        parsed = parseHtml(html);
+        dbgLog(`${dateStr}: ${parsed.length} estrazioni parsate`);
+        if (parsed.length > 0) break; // funziona, non serve il fallback
+      } catch(e) {
+        dbgLog(`${dateStr} URL fallito: ${e.message}`);
       }
-    } catch(e) {
-      dbgLog(`Day ${dateStr} FAIL: ${e.message}`);
+    }
+
+    if (parsed.length > 0) {
+      const existingIds = new Set(draws.map(d => d.id));
+      const newDraws = parsed.filter(d => !existingIds.has(d.id));
+      draws = [...draws, ...newDraws].sort((a,b) => b.id - a.id);
+      loaded += newDraws.length;
+    } else {
       failed++;
     }
 
