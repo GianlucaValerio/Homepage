@@ -152,6 +152,7 @@ tr:hover td{background:var(--bg)}
     <button class="tab"    onclick="switchTab('backtest')">🧪 Backtest</button>
     <button class="tab"    onclick="switchTab('stats')">📈 Statistica</button>
     <button class="tab"    onclick="switchTab('cluster')">🔴 Cluster</button>
+    <button class="tab"    onclick="switchTab('walkfwd')">🔬 Walk-Forward</button>
   </div>
 
   <!-- FREQ -->
@@ -160,15 +161,18 @@ tr:hover td{background:var(--bg)}
     <div class="tb">
       <label>Finestra: <strong id="nval">5</strong> est.</label>
       <input type="range" id="nslider" min="1" max="50" value="5" oninput="setN(this.value)">
-      <label style="display:flex;align-items:center;gap:6px;font-size:13px;background:var(--card);border:.5px solid var(--borders);border-radius:var(--r);padding:5px 10px;cursor:pointer">
-        <input type="checkbox" id="extra-mode" onchange="renderFreq()">
-        Priorità Extra
+      <label>Calcola su:
+        <select id="freq-mode" onchange="renderFreq()">
+          <option value="base">Base (20 numeri)</option>
+          <option value="extra">Extra (15 numeri)</option>
+          <option value="mixed" selected>Misto (Base×2 + Extra×1)</option>
+        </select>
       </label>
       <label>Palette:
         <select id="palette-sel" onchange="renderFreq()">
-          <option value="ember">🔴 Ember — rosso/arancio</option>
-          <option value="inferno">🟠 Inferno — giallo/oro</option>
-          <option value="magma">🟣 Magma — viola/fucsia</option>
+          <option value="ember">🔴 Ember</option>
+          <option value="inferno">🟠 Inferno</option>
+          <option value="magma">🟣 Magma</option>
         </select>
       </label>
       <div class="leg" id="palette-leg"></div>
@@ -195,7 +199,7 @@ tr:hover td{background:var(--bg)}
       <h3>⚙️ Parametri</h3>
       <div class="row">
         <label>Finestra: <select id="pw"><option value="5">5</option><option value="10" selected>10</option><option value="20">20</option><option value="30">30</option></select></label>
-        <label>Numeri: <select id="pc"><option value="5">5</option><option value="6" selected>6</option><option value="7">7</option><option value="8">8</option><option value="10">10</option></select></label>
+        <label>Numeri: <select id="pc"><option value="3">3</option><option value="4">4</option><option value="5" selected>5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="10">10</option></select></label>
         <label><input type="checkbox" id="pex" checked> Pesa Extra</label>
         <label><input type="checkbox" id="pexclude"> Escludi usciti nell'ultima est.</label>
         <label><input type="checkbox" id="pexclude-delayB"> Escludi ritardo Base &gt;5</label>
@@ -273,7 +277,10 @@ tr:hover td{background:var(--bg)}
         </select></label>
         <label>Su ultime: <input type="number" id="opt-win" value="50" min="10" max="500" style="width:65px"> est.</label>
         <label>Giocati: <select id="opt-played">
-          <option value="6" selected>6</option>
+          <option value="3">3</option>
+          <option value="4">4</option>
+          <option value="5" selected>5</option>
+          <option value="6">6</option>
           <option value="7">7</option>
           <option value="8">8</option>
         </select></label>
@@ -353,6 +360,12 @@ tr:hover td{background:var(--bg)}
           <option value="7">≥ 7 in base</option>
         </select></label>
         <button onclick="autoClusterParams()" style="font-size:12px;padding:4px 10px">⚡ Auto</button>
+        <label>Numeri combinazione: <select id="cl-combo">
+          <option value="3">3</option>
+          <option value="4">4</option>
+          <option value="5" selected>5</option>
+          <option value="6">6</option>
+        </select></label>
       </div>
       <div class="row">
         <label>Calibrazione:
@@ -371,6 +384,62 @@ tr:hover td{background:var(--bg)}
       </div>
     </div>
     <div id="cluster-out"></div>
+  </div>
+
+  <!-- WALK-FORWARD -->
+  <div class="pane" id="pane-walkfwd">
+    <div class="info">
+      <strong>Walk-Forward Validation:</strong> per ogni estrazione del campione, trova la combinazione ottimale
+      delle <em>N estrazioni precedenti</em> e la testa sull'estrazione successiva — senza mai guardare il futuro.
+      Risponde alla domanda: <em>"se avessi giocato ogni 5 minuti la combinazione migliore del passato recente, quanto avresti vinto?"</em>
+    </div>
+    <div class="box">
+      <h3>⚙️ Parametri</h3>
+      <div class="row">
+        <label>Finestra look-back:
+          <select id="wf-window">
+            <option value="5">5 est.</option>
+            <option value="10" selected>10 est.</option>
+            <option value="15">15 est.</option>
+            <option value="20">20 est.</option>
+            <option value="30">30 est.</option>
+          </select>
+          <span style="font-size:11px;color:var(--muted)">(estrazioni usate per scegliere la combo)</span>
+        </label>
+        <label>Numeri giocati:
+          <select id="wf-played">
+            <option value="3">3</option>
+            <option value="4">4</option>
+            <option value="5" selected>5</option>
+            <option value="6">6</option>
+          </select>
+        </label>
+        <label>Pool candidati:
+          <select id="wf-pool">
+            <option value="10">top 10</option>
+            <option value="15" selected>top 15</option>
+            <option value="20">top 20</option>
+          </select>
+        </label>
+      </div>
+      <div class="row">
+        <label>Testa su ultime:
+          <input type="number" id="wf-test" value="50" min="10" max="999" style="width:65px"> est.
+          <span style="font-size:11px;color:var(--muted)">(quante estrazioni simulare)</span>
+        </label>
+        <label>Gioca su:
+          <select id="wf-mode">
+            <option value="both">Base+Extra</option>
+            <option value="base">Solo Base</option>
+          </select>
+        </label>
+        <button class="pri" id="wf-btn" onclick="runWalkForward()">🔬 Avvia</button>
+      </div>
+      <div id="wf-progress" style="font-size:12px;color:var(--muted);display:none">
+        <span class="spin"></span> <span id="wf-pct">Elaborazione...</span>
+      </div>
+    </div>
+    <div id="wf-out"></div>
   </div>
 
 </div>
@@ -442,14 +511,27 @@ async function fetchData(manual = false) {
     const parsed = parseHtml(html);
     if (parsed.length === 0) throw new Error('Parser: 0 estrazioni trovate. Apri 🐛 per dettagli');
 
-    draws = parsed;
+    // Ripristina automaticamente i giorni storici dalla cache localStorage
+    const histDraws = loadHistFromCache();
+    const allParsedUids = new Set(parsed.map(d => d.uid));
+    const histOnly = histDraws.filter(d => !allParsedUids.has(d.uid));
+    draws = [...parsed, ...histOnly].sort((a, b) => {
+      if ((b.dateKey||'') !== (a.dateKey||'')) return (b.dateKey||'').localeCompare(a.dateKey||'');
+      return b.id - a.id;
+    });
+
+    const histDays = new Set(histOnly.map(d => d.dateKey)).size;
+    dbgLog(`Oggi: ${parsed.length} est. + ${histOnly.length} storiche da cache (${histDays} giorni)`);
+
     N = Math.min(N || 5, draws.length);
     const sl = document.getElementById('nslider');
-    sl.max = Math.min(50, draws.length);
-    if (parseInt(sl.value) > draws.length) sl.value = N;
+    const todayCount = parsed.length; // solo le estrazioni di oggi per lo slider
+    sl.max = todayCount;
+    if (parseInt(sl.value) > todayCount) { sl.value = Math.min(N, todayCount); }
 
     const d = draws[0];
-    setStatus('ok', draws.length + ' estrazioni · ultima #' + d.id + ' ore ' + d.time + ' (' + d.date + ')');
+    const histInfo = histDays > 0 ? ` + ${histDays} giorni storici (${draws.length} tot.)` : '';
+    setStatus('ok', parsed.length + ' estrazioni oggi' + histInfo + ' · ultima #' + d.id + ' ore ' + d.time + ' (' + d.date + ')');
     setTime();
     render();
 
@@ -473,8 +555,18 @@ function parseNums(str) {
   return nums;
 }
 
+// Mesi italiani → numero
+const MONTHS_IT = {gen:'01',feb:'02',mar:'03',apr:'04',mag:'05',giu:'06',lug:'07',ago:'08',set:'09',ott:'10',nov:'11',dic:'12'};
+function dateToKey(dateStr) {
+  const parts = dateStr.trim().toLowerCase().split(/\s+/);
+  if (parts.length < 3) return dateStr;
+  const dd   = parts[0].padStart(2,'0');
+  const mm   = MONTHS_IT[parts[1].slice(0,3)] || '00';
+  const yyyy = parts[2];
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 function parseHtml(html) {
-  // Strip HTML tags → plain text
   const text = html
     .replace(/<script[\s\S]*?<\/script>/gi, '')
     .replace(/<style[\s\S]*?<\/style>/gi, '')
@@ -486,7 +578,6 @@ function parseHtml(html) {
 
   dbgLog('Testo dopo strip: ' + text.length + ' chars');
 
-  // Find all draw headers: #NNN  DD Mon YYYY  HH:MM
   const HEADER = /#(\d+)\s+(\d{1,2}\s+\w+\s+\d{4})\s+(\d{2}:\d{2})/g;
   const headers = [];
   let m;
@@ -515,11 +606,19 @@ function parseHtml(html) {
     const base  = parseNums(body.slice(numPos + 6, baseEnd)).slice(0, 20);
     const extra = parseNums(body.slice(extraPos + 5)).slice(0, 15);
 
-    if (base.length >= 15) results.push({ id: h.id, date: h.date, time: h.time, base, extra });
+    if (base.length >= 15) {
+      const dateKey = dateToKey(h.date);
+      const uid     = dateKey + '_' + String(h.id).padStart(4,'0');
+      results.push({ id: h.id, date: h.date, dateKey, uid, time: h.time, base, extra });
+    }
   }
 
   dbgLog('Estrazioni valide: ' + results.length);
-  return results.sort((a, b) => b.id - a.id);
+  // Ordina: più recente prima — prima per data desc, poi per id desc
+  return results.sort((a, b) => {
+    if (b.dateKey !== a.dateKey) return b.dateKey.localeCompare(a.dateKey);
+    return b.id - a.id;
+  });
 }
 
 /* ── STATUS / COUNTDOWN ── */
@@ -546,7 +645,7 @@ function toggleDbg(){
 
 /* ── TABS ── */
 function switchTab(name){
-  const ns=['freq','draws','predict','backtest','stats','cluster'];
+  const ns=['freq','draws','predict','backtest','stats','cluster','walkfwd'];
   document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('on',ns[i]===name));
   document.querySelectorAll('.pane').forEach(p=>p.classList.remove('on'));
   document.getElementById('pane-'+name).classList.add('on');
@@ -612,18 +711,19 @@ function calcDelays(window=50){
 function renderFreq(){
   if(!draws.length)return;
   const{bc,ec}=getCounts(N);
-  const extraMode=document.getElementById('extra-mode').checked;
+  const freqMode=document.getElementById('freq-mode').value; // 'base','extra','mixed'
   const palName=document.getElementById('palette-sel').value;
   const{delayB,delayE,delayBE}=calcDelays(50);
 
-  // Punteggio ponderato con penalità ritardo
-  const wB=extraMode?1:2, wE=extraMode?2:1;
+  // Punteggio in base alla modalità scelta
+  const wB = freqMode==='extra' ? 0 : freqMode==='base' ? 1 : 2;
+  const wE = freqMode==='base'  ? 0 : freqMode==='extra' ? 1 : 1;
   const scores={};
   let maxScore=0;
   for(let i=1;i<=90;i++){
     let s=bc[i]*wB+ec[i]*wE;
-    // Penalità ritardo: ogni est. di ritardo oltre 3 riduce il punteggio del 15%
-    const delay=extraMode?delayBE[i]:delayB[i];
+    // Penalità ritardo: usa il ritardo rilevante per la modalità
+    const delay = freqMode==='extra' ? delayE[i] : freqMode==='base' ? delayB[i] : delayBE[i];
     const penalty=Math.max(0,delay-3);
     s=s*Math.pow(0.85,penalty);
     scores[i]=s;
@@ -720,11 +820,17 @@ function renderFreq(){
     const barOpacity=Math.max(0.2,a);
 
     const db=delayB[i], de=delayE[i];
-    const highDelayB=db>5, highDelayBE=delayBE[i]>5;
-    // Badge ritardo: rosso se ritardo alto, bianco trasparente altrimenti
     const delayBadgeB=db>5?`background:rgba(200,40,20,0.75);color:#fff`:`background:${badgeColor};color:${textColor}`;
     const delayBadgeE=de>5?`background:rgba(20,100,20,0.6);color:#fff`:`background:${badgeColor};color:${textColor}`;
-    const tooltip=`Ritardo Base: ${db} | Ritardo Extra: ${de} | B:${b} E:${e}`;
+    const tooltip=`B:${b} (ritardo ${db}) | E:${e} (ritardo ${de})`;
+
+    // Barre e badge adattati alla modalità
+    const showB = freqMode !== 'extra';
+    const showE = freqMode !== 'base';
+    const bBar  = showB ? `<div class="bar bb" style="width:${Math.max(2,Math.round(b/maxB*28))}px;opacity:${barOpacity}"></div>` : '';
+    const eBar  = showE ? `<div class="bar be" style="width:${Math.max(2,Math.round(e/maxE*28))}px;opacity:${barOpacity}"></div>` : '';
+    const bCnt  = showB ? `<span class="cnt" style="${delayBadgeB}" title="Ritardo Base">B:${b}</span>` : '';
+    const eCnt  = showE ? `<span class="cnt" style="${delayBadgeE}" title="Ritardo Extra">E:${e}</span>` : '';
 
     const el=document.createElement('div');
     el.className='nc'+(isHot?' hot-num':'');
@@ -736,14 +842,8 @@ function renderFreq(){
     `;
     el.innerHTML=`
       <div class="n" style="color:${isHot?'#fff':textColor};font-weight:${t>0.6?700:500}">${i}${isHot?' 🔥':''}</div>
-      <div class="bars">
-        <div class="bar bb" style="width:${Math.max(2,Math.round(b/maxB*28))}px;opacity:${barOpacity}"></div>
-        <div class="bar be" style="width:${Math.max(2,Math.round(e/maxE*28))}px;opacity:${barOpacity}"></div>
-      </div>
-      <div class="cnts">
-        <span class="cnt" style="${delayBadgeB}" title="Ritardo Base">R:${db}</span>
-        <span class="cnt" style="${delayBadgeE}" title="Ritardo Extra">R:${de}</span>
-      </div>`;
+      <div class="bars">${bBar}${eBar}</div>
+      <div class="cnts">${bCnt}${eCnt}</div>`;
     g.appendChild(el);
   }
 }
@@ -857,9 +957,10 @@ function btPred(){
   if(!lastPred.length)return;
   const active=lastPredOpt.filter((_,i)=>lastPredOptOn.includes(i));
   const combo=[...lastPred,...active];
+  const win=Math.min(parseInt(document.getElementById('btwin').value)||50,draws.length);
   document.getElementById('predbt').innerHTML=
-    btHtml(backtest(combo,draws.slice(0,50),'both'),combo,
-      `🧪 Backtest combinazione · ${combo.length} numeri · ultime 50 est.`);
+    btHtml(backtest(combo,draws.slice(0,win),'both'),combo,
+      `🧪 Backtest combinazione · ${combo.length} numeri · ultime ${win} est.`);
 }
 
 /* ── PRIZE TABLE (no Oro/Doppio Oro)
@@ -872,19 +973,19 @@ function btPred(){
 ──────────────────────────────────────────────────────────────── */
 const PRIZES = (() => {
   // T[giocati][indovinati] = [premio_base 10eLotto €, premio_extra €]
-  // Base = colonna "10eLotto", Extra = colonna "EXTRA PREMI"
-  // Indipendenti: prize = max(base, extra)
+  // Fonte: tabella ufficiale ADM
+  // Nota: indovinati=0 presente per i giocati che hanno premio "0 numeri indovinati"
   const T = {
-    1:  { 1:[2, 4] },
-    2:  { 2:[7, 16] },
-    3:  { 2:[2,0],    3:[25, 50] },
-    4:  { 2:[2,0],    3:[10,0],    4:[50, 100] },
-    5:  { 2:[2,0],    3:[5,0],     4:[25,0],    5:[150, 300] },
-    6:  { 2:[0,1],    3:[2,7],     4:[10,20],   5:[100,200],  6:[1000,2000] },
-    7:  { 3:[2,0],    4:[8,0],     5:[40,75],    6:[750,1500],  7:[50000,100000] },
-    8:  { 3:[5,0],    4:[5,0],     5:[20,45],    6:[500,1000],  7:[50000,100000],  8:[250000,500000] },
-    9:  { 4:[5,0],    5:[12,25],   6:[250,500],  7:[5000,10000],8:[125000,250000], 9:[500000,1000000] },
-    10: { 5:[12,25],  6:[50,100],  7:[800,1600], 8:[5000,10000],9:[125000,250000], 10:[500000,1000000] },
+    1:  { 1:[3,4] },
+    2:  { 2:[14,16], 1:[0,1] },
+    3:  { 3:[45,100], 2:[2,4] },
+    4:  { 4:[90,225], 3:[10,25], 2:[1,2] },
+    5:  { 5:[140,300], 4:[15,30], 3:[4,10], 2:[1,2] },
+    6:  { 6:[1000,2000], 5:[100,200], 4:[10,20], 3:[2,7], 2:[0,1] },
+    7:  { 7:[1600,5000], 6:[400,750], 5:[40,75], 4:[4,15], 3:[0,5], 0:[1,0] },
+    8:  { 8:[10000,20000], 7:[800,2000], 6:[200,450], 5:[20,45], 4:[0,10], 3:[0,3], 0:[1,0] },
+    9:  { 9:[100000,250000], 8:[4000,5000], 7:[400,500], 6:[40,75], 5:[10,20], 4:[0,10], 0:[2,1] },
+    10: { 10:[1000000,2000000], 9:[20000,40000], 8:[1000,2000], 7:[150,250], 6:[15,35], 5:[5,20], 4:[0,6], 0:[2,1] },
   };
   return T;
 })();
@@ -955,7 +1056,7 @@ function btHtml(results, combo, title) {
       </tr>
     </thead><tbody>`;
 
-  results.slice(0, 100).forEach(r => {
+  results.forEach(r => {
     const p = r._prize;
     const win = r._win;
     const winCls = win > 0 ? (win >= 1000 ? 'w3' : win >= 100 ? 'w2' : 'w1') : 'w0';
@@ -1030,9 +1131,10 @@ function btManualPicker() {
   if (!draws.length) { alert('Prima carica i dati'); return; }
   const combo = [...pickerSelected].sort((a,b)=>a-b);
   if (combo.length < 2) { alert('Seleziona almeno 2 numeri'); return; }
+  const win = Math.min(parseInt(document.getElementById('btwin').value)||50, draws.length);
   document.getElementById('manualbt').innerHTML =
-    btHtml(backtest(combo, draws.slice(0, 50), 'both'), combo,
-      '🧪 Backtest selezione manuale · ultime 50 est.');
+    btHtml(backtest(combo, draws.slice(0, win), 'both'), combo,
+      `🧪 Backtest selezione manuale · ultime ${win} est.`);
 }
 
 function saveManualCombo() {
@@ -1428,6 +1530,7 @@ function runCluster() {
 
   const poolSize = parseInt(document.getElementById('cl-pool').value);
   const thresh   = parseInt(document.getElementById('cl-thresh').value);
+  const comboSize= parseInt(document.getElementById('cl-combo').value);
   const calibN   = Math.min(parseInt(document.getElementById('cl-calib').value)||200, draws.length);
   const testN    = Math.min(parseInt(document.getElementById('cl-test').value)||50, draws.length - calibN);
 
@@ -1493,24 +1596,24 @@ function runCluster() {
     .sort((a,b)=>b[1]-a[1]).slice(0,15).map(([n])=>parseInt(n));
   const clSurprise = clTop15.filter(n => !pool.has(n));
 
-  // FASE 3: sestina ottimale sui soli cluster
+  // FASE 3: combinazione ottimale (N numeri) sui soli cluster
   let bestClCombo=null, bestClEur=0;
-  if (clusters.length>=3 && clTop15.length>=6) {
+  if (clusters.length>=3 && clTop15.length>=comboSize) {
     const clDraws = clusters.map(c=>c.draw);
-    function getAllC6(arr){
+    function getAllCK(arr, k){
       const res=[];
       function bt(s,cur){
-        if(cur.length===6){res.push([...cur]);return;}
-        for(let i=s;i<=arr.length-(6-cur.length);i++){cur.push(arr[i]);bt(i+1,cur);cur.pop();}
+        if(cur.length===k){res.push([...cur]);return;}
+        for(let i=s;i<=arr.length-(k-cur.length);i++){cur.push(arr[i]);bt(i+1,cur);cur.pop();}
       }
       bt(0,[]);return res;
     }
-    getAllC6(clTop15).forEach(combo => {
+    getAllCK(clTop15, comboSize).forEach(combo => {
       let tot=0;
       clDraws.forEach(d => {
         const hB=combo.filter(n=>d.base.includes(n)).length;
         const hE=combo.filter(n=>d.extra.includes(n)).length;
-        tot+=Math.max(getPrize(6,hB,hE).base,getPrize(6,hB,hE).extra);
+        tot+=Math.max(getPrize(comboSize,hB,hE).base,getPrize(comboSize,hB,hE).extra);
       });
       if(tot>bestClEur){bestClEur=tot;bestClCombo=combo;}
     });
@@ -1522,7 +1625,7 @@ function runCluster() {
       if(!exists){
         const opt=document.createElement('option');
         opt.value=val;
-        opt.textContent='🔴 Cluster: '+bestClCombo.join(' · ')+' ('+fmtEur(bestClEur)+')';
+        opt.textContent='🔴 Cluster '+comboSize+'n: '+bestClCombo.join(' · ')+' ('+fmtEur(bestClEur)+')';
         sel.appendChild(opt);
       }
     }
@@ -1607,12 +1710,12 @@ function runCluster() {
   </div>
 
   <div class="box" style="border-left:4px solid var(--grn)">
-    <div style="font-size:15px;font-weight:600;color:var(--grn);margin-bottom:8px">🟢 FASE 3 — SESTINA: cosa giocare quando sei in finestra</div>
+    <div style="font-size:15px;font-weight:600;color:var(--grn);margin-bottom:8px">🟢 FASE 3 — COMBINAZIONE: cosa giocare quando sei in finestra</div>
     <p style="font-size:12px;color:var(--muted);margin-bottom:12px">
-      Ottimale costruita sui numeri della Fase 2 e testata <strong>solo sulle estrazioni cluster</strong>.
+      Ottimale costruita sui numeri della Fase 2 (${comboSize} numeri) e testata <strong>solo sulle estrazioni cluster</strong>.
       <strong>Giocala solo quando la Fase 1 dice finestra attiva o imminente.</strong>
     </p>
-    ${!bestClCombo?'<p style="color:var(--muted);font-size:12px">Servono almeno 3 cluster e 6 numeri per calcolare la sestina.</p>':`
+    ${!bestClCombo?`<p style="color:var(--muted);font-size:12px">Servono almeno 3 cluster e ${comboSize} numeri per calcolare la combinazione.</p>`:`
     <div style="padding:14px;background:var(--green-bg);border:.5px solid var(--grn);border-radius:var(--r);margin-bottom:10px">
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
         ${bestClCombo.map(n=>'<div style="width:42px;height:42px;border-radius:50%;background:var(--grn);color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600">'+n+'</div>').join('')}
@@ -1620,7 +1723,7 @@ function runCluster() {
       <div style="font-size:14px;font-weight:600;color:var(--grn)">${fmtEur(bestClEur)} simulati su ${clusters.length} estrazioni cluster</div>
     </div>
     <div style="font-size:12px;color:var(--amb);background:var(--amb-bg);padding:8px 12px;border-radius:var(--r);margin-bottom:10px">
-      ⚠️ Questa sestina è valida SOLO in finestra cluster. Fuori finestra la logica non regge.
+      ⚠️ Questa combinazione è valida SOLO in finestra cluster. Fuori finestra la logica non regge.
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button onclick="document.getElementById('btin').value='${bestClCombo.join(' ')}';switchTab('backtest')">🧪 Backtest questa sestina</button>
@@ -1659,6 +1762,27 @@ async function loadExtraDays() {
     const dd   = String(date.getDate()).padStart(2,'0');
     const dateStr = `${yyyy}-${mm}-${dd}`;
 
+    // Controlla prima la cache localStorage
+    const cacheKey = 'lotto_hist_' + dateStr;
+    const cached = localStorage.getItem(cacheKey);
+    if (cached) {
+      try {
+        const cachedDraws = JSON.parse(cached);
+        if (cachedDraws.length > 0) {
+          const existingUids = new Set(draws.map(d => d.uid || (d.dateKey+'_'+String(d.id).padStart(4,'0'))));
+          const newDraws = cachedDraws.filter(d => !existingUids.has(d.uid));
+          draws = [...draws, ...newDraws].sort((a,b) => {
+            if ((b.dateKey||'')!==(a.dateKey||'')) return (b.dateKey||'').localeCompare(a.dateKey||'');
+            return b.id - a.id;
+          });
+          loaded += newDraws.length;
+          status.innerHTML = `📦 ${dateStr} da cache (${newDraws.length} estrazioni) — ${d}/${daysBack}`;
+          dbgLog(`${dateStr}: ${newDraws.length} da cache localStorage`);
+          continue; // salta il fetch remoto
+        }
+      } catch(e) { localStorage.removeItem(cacheKey); }
+    }
+
     // lottologia usa URL progressivi: estrazioni-ieri, estrazioni-2gg-fa, estrazioni-3gg-fa...
     let histUrl;
     if (d === 1) {
@@ -1690,10 +1814,17 @@ async function loadExtraDays() {
     }
 
     if (parsed.length > 0) {
-      const existingIds = new Set(draws.map(d => d.id));
-      const newDraws = parsed.filter(d => !existingIds.has(d.id));
-      draws = [...draws, ...newDraws].sort((a,b) => b.id - a.id);
+      // Cache in localStorage per evitare di scaricare di nuovo i giorni già salvati
+      try { localStorage.setItem('lotto_hist_' + dateStr, JSON.stringify(parsed)); } catch(e) {}
+
+      const existingUids = new Set(draws.map(d => d.uid || (d.dateKey + '_' + String(d.id).padStart(4,'0'))));
+      const newDraws = parsed.filter(d => !existingUids.has(d.uid));
+      draws = [...draws, ...newDraws].sort((a,b) => {
+        if ((b.dateKey||'') !== (a.dateKey||'')) return (b.dateKey||'').localeCompare(a.dateKey||'');
+        return b.id - a.id;
+      });
       loaded += newDraws.length;
+      dbgLog(`${dateStr}: ${newDraws.length} nuove (${parsed.length - newDraws.length} già presenti)`);
     } else {
       failed++;
     }
@@ -1710,11 +1841,29 @@ async function loadExtraDays() {
   validateClusterParams();
 
   status.innerHTML = loaded > 0
-    ? `✅ Caricate ${loaded} estrazioni storiche · Totale: <strong>${total} estrazioni</strong>${failed>0?' · '+failed+' giorni falliti':''}`
-    : `⚠️ Nessuna nuova estrazione trovata${failed>0?' ('+failed+' giorni falliti)':''} — il sito potrebbe usare URL diversi per lo storico`;
+    ? `✅ Caricate ${loaded} estrazioni · Totale: <strong>${draws.length} estrazioni su ${draws.length>0?draws[draws.length-1]?.date:'?'} → ${draws[0]?.date}</strong>${failed>0?' · '+failed+' giorni falliti':''} &nbsp;<button onclick="clearHistCache()" style="font-size:11px;padding:2px 7px">🗑 Svuota cache</button>`
+    : `⚠️ Nessuna nuova estrazione trovata${failed>0?' ('+failed+' giorni falliti)':''}`;
 
   btn.disabled = false;
   autoClusterParams(); // ricalcola auto con il nuovo totale
+}
+
+function loadHistFromCache() {
+  const histDraws = [];
+  const keys = Object.keys(localStorage).filter(k => k.startsWith('lotto_hist_'));
+  keys.forEach(k => {
+    try {
+      const data = JSON.parse(localStorage.getItem(k));
+      if (Array.isArray(data)) histDraws.push(...data);
+    } catch(e) { localStorage.removeItem(k); }
+  });
+  dbgLog(`Cache localStorage: ${keys.length} giorni, ${histDraws.length} estrazioni`);
+  return histDraws;
+}
+
+function clearHistCache() {
+  Object.keys(localStorage).filter(k => k.startsWith('lotto_hist_')).forEach(k => localStorage.removeItem(k));
+  document.getElementById('load-days-status').textContent = '🗑 Cache svuotata — al prossimo caricamento i dati verranno ri-scaricati dal sito';
 }
 
 /* ── CLUSTER PARAM VALIDATION ── */
@@ -1745,6 +1894,237 @@ function autoClusterParams() {
   document.getElementById('cl-calib').value = calib;
   document.getElementById('cl-test').value  = test;
   validateClusterParams();
+}
+
+/* ── WALK-FORWARD VALIDATION ── */
+function runWalkForward() {
+  if (!draws.length) { alert('Prima carica i dati'); return; }
+
+  const lookBack = parseInt(document.getElementById('wf-window').value);
+  const played   = parseInt(document.getElementById('wf-played').value);
+  const poolSize = parseInt(document.getElementById('wf-pool').value);
+  const testN    = Math.min(parseInt(document.getElementById('wf-test').value)||50, draws.length - lookBack);
+  const mode     = document.getElementById('wf-mode').value;
+
+  if (testN < 2) { alert('Non abbastanza estrazioni. Riduci la finestra look-back o carica più dati.'); return; }
+
+  document.getElementById('wf-progress').style.display = 'block';
+  document.getElementById('wf-btn').disabled = true;
+  document.getElementById('wf-out').innerHTML = '';
+
+  // draws[0] = più recente. Per walk-forward lavoriamo in ordine cronologico.
+  // Il campione di test sono le ultime testN estrazioni (draws[0..testN-1])
+  // Per ogni estrazione i nel test, il look-back è draws[i+1..i+lookBack]
+  const slChron = [...draws].reverse(); // [vecchia→recente]
+  const totalLen = slChron.length;
+
+  // Indici delle estrazioni di test: le ultime testN in ordine cronologico
+  const testStart = totalLen - testN;
+
+  // Combo cache: per ogni finestra, la combo ottimale
+  function getBestCombo(lookBackDraws, k, pSize) {
+    // Frequenza base×2 + extra×1 sulla finestra look-back
+    const freq = {};
+    for (let i=1;i<=90;i++) freq[i]=0;
+    lookBackDraws.forEach(d => {
+      d.base.forEach(n => freq[n]+=2);
+      d.extra.forEach(n => freq[n]+=1);
+    });
+    const pool = Object.entries(freq)
+      .sort((a,b)=>b[1]-a[1]).slice(0,pSize).map(([n])=>parseInt(n));
+
+    // Trova la combo ottimale sul look-back stesso
+    let best=null, bestScore=0;
+    function bt(s, cur) {
+      if (cur.length===k) {
+        let score=0;
+        lookBackDraws.forEach(d => {
+          const hB=cur.filter(n=>d.base.includes(n)).length;
+          const hE=cur.filter(n=>d.extra.includes(n)).length;
+          score+=Math.max(getPrize(k,hB,hE).base, getPrize(k,hB,hE).extra);
+        });
+        if(score>bestScore){bestScore=score;best=[...cur];}
+        return;
+      }
+      for(let i=s;i<=pool.length-(k-cur.length);i++){
+        cur.push(pool[i]);bt(i+1,cur);cur.pop();
+      }
+    }
+    bt(0,[]);
+    return best || pool.slice(0,k);
+  }
+
+  setTimeout(() => {
+    const results = [];
+    let totalWin = 0;
+    let step = 0;
+
+    for (let i = testStart; i < totalLen; i++) {
+      // Look-back: le lookBack estrazioni precedenti
+      const lb = slChron.slice(Math.max(0, i-lookBack), i);
+      if (lb.length < 3) { step++; continue; }
+
+      const combo = getBestCombo(lb, played, poolSize);
+      const d = slChron[i]; // estrazione da testare
+
+      const hBase  = combo.filter(n => d.base.includes(n));
+      const hExtra = combo.filter(n => d.extra.includes(n));
+      const p = getPrize(played, hBase.length, hExtra.length);
+      const win = mode === 'base' ? p.base : Math.max(p.base, p.extra);
+      totalWin += win;
+
+      results.push({
+        draw: d,
+        combo,
+        hBase, hExtra,
+        prize: p,
+        win,
+        lbSize: lb.length
+      });
+
+      step++;
+      if (step % 10 === 0) {
+        document.getElementById('wf-pct').textContent =
+          `${step}/${testN} estrazioni analizzate (${Math.round(step/testN*100)}%)`;
+      }
+    }
+
+    document.getElementById('wf-progress').style.display = 'none';
+    document.getElementById('wf-btn').disabled = false;
+
+    // ── STATISTICHE ──
+    const wins     = results.filter(r => r.win > 0);
+    const winRate  = Math.round(wins.length / results.length * 100);
+    const avgWin   = results.length ? totalWin / results.length : 0;
+
+    // Distribuzione match
+    const matchDist = {};
+    results.forEach(r => {
+      const m = r.hBase.length + r.hExtra.length;
+      matchDist[m] = (matchDist[m]||0) + 1;
+    });
+
+    // Combo più usate
+    const comboCount = {};
+    results.forEach(r => {
+      const k = r.combo.join(',');
+      comboCount[k] = (comboCount[k]||0) + 1;
+    });
+    const topCombos = Object.entries(comboCount).sort((a,b)=>b[1]-a[1]).slice(0,5);
+
+    // Confronto con random baseline (Monte Carlo veloce)
+    let randomTotal = 0;
+    const RANDOM_SIMS = 200;
+    for (let s=0; s<RANDOM_SIMS; s++) {
+      results.forEach(r => {
+        const randCombo = [];
+        while(randCombo.length < played) {
+          const n = Math.floor(Math.random()*90)+1;
+          if(!randCombo.includes(n)) randCombo.push(n);
+        }
+        const hB = randCombo.filter(n=>r.draw.base.includes(n)).length;
+        const hE = randCombo.filter(n=>r.draw.extra.includes(n)).length;
+        const p  = getPrize(played, hB, hE);
+        randomTotal += mode==='base'?p.base:Math.max(p.base,p.extra);
+      });
+    }
+    const randomAvg = randomTotal / RANDOM_SIMS;
+    const edge = totalWin > 0 ? Math.round((totalWin / randomAvg - 1) * 100) : 0;
+
+    const html = `
+    <div class="box">
+      <h3>📊 Risultati Walk-Forward</h3>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:14px">
+        Finestra look-back: <strong>${lookBack} est.</strong> ·
+        Numeri giocati: <strong>${played}</strong> ·
+        Pool: <strong>top-${poolSize}</strong> ·
+        Estrazioni simulate: <strong>${results.length}</strong>
+      </p>
+      <div class="scards" style="margin-bottom:16px">
+        <div class="sc"><div class="lb">Totale vinto</div><div class="vl" style="color:var(--acc)">${fmtEur(totalWin)}</div></div>
+        <div class="sc"><div class="lb">Media per est.</div><div class="vl">${fmtEur(Math.round(avgWin))}</div></div>
+        <div class="sc"><div class="lb">Estrazioni vincenti</div><div class="vl" style="color:var(--grn)">${wins.length} (${winRate}%)</div></div>
+        <div class="sc"><div class="lb">vs. combinazione casuale</div>
+          <div class="vl" style="color:${edge>0?'var(--grn)':edge<0?'var(--red)':'var(--muted)'}">
+            ${edge>0?'+':''}${edge}%
+          </div>
+        </div>
+      </div>
+
+      <div style="font-size:13px;padding:10px 14px;border-radius:var(--r);margin-bottom:14px;
+        background:${edge>=10?'var(--green-bg)':edge>0?'var(--acc-bg)':edge<-10?'var(--red-bg)':'var(--amb-bg)'};
+        border:.5px solid ${edge>=10?'var(--grn)':edge>0?'var(--acc)':edge<-10?'var(--red)':'var(--amb)'}">
+        ${edge>=10?'✅ <strong>Vantaggio statistico rilevante</strong> — la strategia batte il caso puro del '+edge+'%. Vale la pena approfondire con più dati.':
+          edge>0?'🟡 <strong>Leggero vantaggio</strong> ('+edge+'%) — potrebbe essere rumore statistico. Servono più estrazioni per confermare.':
+          edge<-10?'❌ <strong>Nessun vantaggio</strong> — la strategia performa peggio di una combinazione casuale ('+edge+'%). La relazione passato→futuro non è presente in questo campione.':
+          '⚪ <strong>Risultato neutro</strong> ('+edge+'%) — non conclusivo. Prova con finestre diverse.'}
+      </div>
+
+      <div style="font-size:12px;color:var(--muted);margin-bottom:6px">Distribuzione match:</div>
+      <div style="display:flex;flex-direction:column;gap:3px;margin-bottom:14px">
+        ${Object.entries(matchDist).sort((a,b)=>parseInt(a[0])-parseInt(b[0])).map(([m,c])=>{
+          const maxC=Math.max(...Object.values(matchDist));
+          const p=getPrize(played,parseInt(m),0);
+          return `<div style="display:flex;align-items:center;gap:8px;font-size:12px">
+            <div style="width:60px;text-align:right;color:var(--muted)">${m}/${played} match</div>
+            <div style="flex:1;height:13px;background:rgba(0,0,0,0.06);border-radius:3px">
+              <div style="height:100%;width:${Math.round(c/maxC*100)}%;background:${parseInt(m)>=played-1?'var(--grn)':parseInt(m)>=played-2?'var(--acc)':'var(--muted)'};border-radius:3px;opacity:.8"></div>
+            </div>
+            <div style="width:24px;font-weight:600">${c}</div>
+            <div style="width:70px;font-size:11px;color:${p.base>0?'var(--grn)':'var(--muted)'}">${p.base>0?fmtEur(p.base):''}</div>
+          </div>`;}).join('')}
+      </div>
+
+      <div style="font-size:12px;color:var(--muted);margin-bottom:6px">Combinazioni più selezionate dall'algoritmo:</div>
+      <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:14px">
+        ${topCombos.map(([k,c])=>`<div style="display:flex;align-items:center;gap:8px;font-size:12px">
+          <div style="display:flex;gap:3px">${k.split(',').map(n=>`<span class="pill pb">${n}</span>`).join('')}</div>
+          <div style="color:var(--muted)">selezionata ${c} volte</div>
+        </div>`).join('')}
+      </div>
+    </div>
+
+    <div class="box">
+      <h3 style="cursor:pointer" onclick="var el=this.nextElementSibling;el.style.display=el.style.display==='none'?'block':'none'">
+        📋 Dettaglio per estrazione ▾
+      </h3>
+      <div style="display:none;margin-top:10px">
+        <table style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead><tr>
+            <th style="text-align:left;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--muted)">#</th>
+            <th style="text-align:left;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--muted)">Ora</th>
+            <th style="text-align:left;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--muted)">Combo giocata</th>
+            <th style="text-align:left;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--muted)">Base ✓</th>
+            <th style="text-align:left;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--muted)">Extra ✓</th>
+            <th style="text-align:left;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--muted)">Vincita</th>
+          </tr></thead>
+          <tbody>
+            ${results.map(r=>{
+              const cls=r.win>0?(r.win>=1000?'w3':r.win>=100?'w2':'w1'):'w0';
+              return `<tr style="${r.win>0?'background:rgba(26,158,110,0.05)':''}">
+                <td style="padding:5px 8px;border-bottom:.5px solid var(--border)">${r.draw.id}</td>
+                <td style="padding:5px 8px;border-bottom:.5px solid var(--border);color:var(--muted)">${r.draw.time}</td>
+                <td style="padding:5px 8px;border-bottom:.5px solid var(--border)">
+                  <div style="display:flex;gap:2px">${r.combo.map(n=>`<span class="pill pb" style="font-size:10px;padding:1px 4px">${n}</span>`).join('')}</div>
+                </td>
+                <td style="padding:5px 8px;border-bottom:.5px solid var(--border)">
+                  ${r.hBase.map(n=>`<span class="pill pb" style="font-size:10px;padding:1px 4px">${n}</span>`).join('') || '—'}
+                </td>
+                <td style="padding:5px 8px;border-bottom:.5px solid var(--border)">
+                  ${r.hExtra.map(n=>`<span class="pill pe" style="font-size:10px;padding:1px 4px">${n}</span>`).join('') || '—'}
+                </td>
+                <td style="padding:5px 8px;border-bottom:.5px solid var(--border)" class="${cls}">
+                  ${r.win>0?fmtEur(r.win):'—'}
+                </td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+
+    document.getElementById('wf-out').innerHTML = html;
+  }, 50);
 }
 
 /* ── BOOT (build picker grid on predict tab open) ── */
