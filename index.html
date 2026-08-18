@@ -153,6 +153,7 @@ tr:hover td{background:var(--bg)}
     <button class="tab"    onclick="switchTab('stats')">📈 Statistica</button>
     <button class="tab"    onclick="switchTab('cluster')">🔴 Cluster</button>
     <button class="tab"    onclick="switchTab('walkfwd')">🔬 Walk-Forward</button>
+    <button class="tab"    onclick="switchTab('giocate')">📒 Giocate</button>
   </div>
 
   <!-- FREQ -->
@@ -218,6 +219,7 @@ tr:hover td{background:var(--bg)}
       <div id="preddet" style="font-size:12px;color:var(--muted);margin:10px 0 12px"></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
         <button onclick="btPred()">🧪 Backtest combinazione selezionata</button>
+        <button onclick="addGiocataFromCombo([...lastPred,...lastPredOpt.filter((_,i)=>lastPredOptOn.includes(i))],'predizione')" style="background:var(--amb-bg);border-color:var(--amb);color:var(--amb)">📒 Aggiungi a Giocate</button>
         <span id="pred-combo-label" style="font-size:12px;color:var(--muted)"></span>
       </div>
     </div>
@@ -442,6 +444,74 @@ tr:hover td{background:var(--bg)}
     <div id="wf-out"></div>
   </div>
 
+  <!-- GIOCATE -->
+  <div class="pane" id="pane-giocate">
+    <div class="info">
+      <strong>Storico Giocate:</strong> registra ogni giocata (virtuale o reale), poi valida il risultato
+      dopo l'estrazione. I dati sono salvati in localStorage e scaricabili come CSV.
+    </div>
+
+    <!-- AGGIUNGI GIOCATA MANUALE -->
+    <div class="box">
+      <h3>➕ Aggiungi giocata manuale</h3>
+      <div class="row">
+        <label>Numeri: <input type="text" id="gio-nums" placeholder="es. 5 18 31 43 67" style="width:160px"></label>
+        <label>Tipo: <select id="gio-tipo">
+          <option value="virtuale">Virtuale</option>
+          <option value="reale">Reale</option>
+        </select></label>
+        <label>Fonte: <select id="gio-fonte">
+          <option value="predizione">Predizione</option>
+          <option value="cluster">Cluster</option>
+          <option value="walkfwd">Walk-Forward</option>
+          <option value="ottimizzatore">Ottimizzatore</option>
+          <option value="manuale">Manuale</option>
+        </select></label>
+      </div>
+      <div class="row">
+        <label>N° estrazioni:
+          <select id="gio-nestraz" onchange="updateExtRange()">
+            <option value="1">1</option>
+            <option value="2" selected>2</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
+            <option value="5">5</option>
+          </select>
+          <span style="font-size:11px;color:var(--muted)" id="gio-extrange"></span>
+        </label>
+        <label>Note: <input type="text" id="gio-note" placeholder="facoltativo" style="width:180px"></label>
+        <button class="pri" onclick="addGiocata()">➕ Aggiungi</button>
+      </div>
+    </div>
+
+    <!-- GIOCATE IN ATTESA DI VALIDAZIONE -->
+    <div class="box" id="gio-pending-box" style="display:none">
+      <h3>⏳ Da validare</h3>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:10px">Seleziona un'estrazione e valida il risultato.</p>
+      <div id="gio-pending-list"></div>
+    </div>
+
+    <!-- ANALISI -->
+    <div class="box" id="gio-analysis-box" style="display:none">
+      <h3>📊 Analisi pattern</h3>
+      <div id="gio-analysis"></div>
+    </div>
+
+    <!-- STORICO -->
+    <div class="box">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <h3 style="margin-bottom:0">📋 Storico completo (<span id="gio-count">0</span> giocate)</h3>
+        <div style="display:flex;gap:6px">
+          <button onclick="exportCSV()" style="font-size:12px;padding:4px 10px">⬇ Esporta CSV</button>
+          <button onclick="document.getElementById('gio-import').click()" style="font-size:12px;padding:4px 10px">⬆ Importa CSV</button>
+          <input type="file" id="gio-import" accept=".csv" style="display:none" onchange="importCSV(this)">
+          <button onclick="if(confirm('Cancellare tutto lo storico?'))clearGiocate()" style="font-size:12px;padding:4px 10px;color:var(--red)">🗑 Svuota</button>
+        </div>
+      </div>
+      <div id="gio-list"></div>
+    </div>
+  </div>
+
 </div>
 
 <script>
@@ -534,6 +604,12 @@ async function fetchData(manual = false) {
     setStatus('ok', parsed.length + ' estrazioni oggi' + histInfo + ' · ultima #' + d.id + ' ore ' + d.time + ' (' + d.date + ')');
     setTime();
     render();
+
+    // Auto-valida giocate pending che aspettano estrazioni ora disponibili
+    const newlyValidated = autoValidatePending();
+    if (newlyValidated > 0) {
+      showValidationToast(newlyValidated);
+    }
 
   } catch(e) {
     dbgLog('ERRORE: ' + e.message);
@@ -645,12 +721,13 @@ function toggleDbg(){
 
 /* ── TABS ── */
 function switchTab(name){
-  const ns=['freq','draws','predict','backtest','stats','cluster','walkfwd'];
+  const ns=['freq','draws','predict','backtest','stats','cluster','walkfwd','giocate'];
   document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('on',ns[i]===name));
   document.querySelectorAll('.pane').forEach(p=>p.classList.remove('on'));
   document.getElementById('pane-'+name).classList.add('on');
   if(name==='predict') buildManualGrid();
   if(name==='cluster') validateClusterParams();
+  if(name==='giocate') { renderGiocate(); updateExtRange(); }
 }
 function setN(v){N=parseInt(v);document.getElementById('nval').textContent=N;renderFreq();}
 
@@ -1507,9 +1584,10 @@ function finalize(allResults, sl, played, baseOnly) {
             <div style="flex:1;display:flex;gap:4px;flex-wrap:wrap">
               ${r.combo.map(n=>`<span class="pill pb">${n}</span>`).join('')}
             </div>
-            <div style="text-align:right;white-space:nowrap">
+            <div style="text-align:right;white-space:nowrap;display:flex;flex-direction:column;gap:4px;align-items:flex-end">
               <div style="font-size:18px;font-weight:600;color:${i===0?'var(--amb)':'var(--acc)'}">${fmtEur(r.tot)}</div>
               <div style="font-size:11px;color:var(--muted)">su ${sl.length} est.</div>
+              <button onclick="addGiocataFromCombo([${r.combo.join(',')}],'ottimizzatore','Top ${i+1} ottimizzatore')" style="font-size:11px;padding:2px 8px;background:var(--amb-bg);border-color:var(--amb);color:var(--amb)">📒 Giocate</button>
             </div>
           </div>`).join('')}
       </div>
@@ -1726,8 +1804,9 @@ function runCluster() {
       ⚠️ Questa combinazione è valida SOLO in finestra cluster. Fuori finestra la logica non regge.
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <button onclick="document.getElementById('btin').value='${bestClCombo.join(' ')}';switchTab('backtest')">🧪 Backtest questa sestina</button>
+      <button onclick="document.getElementById('btin').value='${bestClCombo.join(' ')}';switchTab('backtest')">🧪 Backtest questa combinazione</button>
       <button onclick="navigator.clipboard&&navigator.clipboard.writeText('${bestClCombo.join(' ')}')">📋 Copia numeri</button>
+      <button onclick="addGiocataFromCombo([${bestClCombo.join(',')}],'cluster','Cluster Fase 3 - '+new Date().toLocaleTimeString('it-IT'))" style="background:var(--amb-bg);border-color:var(--amb);color:var(--amb)">📒 Aggiungi a Giocate</button>
     </div>`}
   </div>
 
@@ -2077,9 +2156,10 @@ function runWalkForward() {
 
       <div style="font-size:12px;color:var(--muted);margin-bottom:6px">Combinazioni più selezionate dall'algoritmo:</div>
       <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:14px">
-        ${topCombos.map(([k,c])=>`<div style="display:flex;align-items:center;gap:8px;font-size:12px">
+        ${topCombos.map(([k,c])=>`<div style="display:flex;align-items:center;gap:8px;font-size:12px;flex-wrap:wrap">
           <div style="display:flex;gap:3px">${k.split(',').map(n=>`<span class="pill pb">${n}</span>`).join('')}</div>
           <div style="color:var(--muted)">selezionata ${c} volte</div>
+          <button onclick="addGiocataFromCombo([${k}],'walkfwd','Walk-Forward top combo')" style="font-size:11px;padding:2px 8px;background:var(--amb-bg);border-color:var(--amb);color:var(--amb)">📒 Aggiungi</button>
         </div>`).join('')}
       </div>
     </div>
@@ -2127,8 +2207,414 @@ function runWalkForward() {
   }, 50);
 }
 
+/* ── SISTEMA GIOCATE ── */
+function updateExtRange() {
+  if (!draws.length) return;
+  const firstId = draws[0].id + 1;
+  const n = parseInt(document.getElementById('gio-nestraz')?.value) || 1;
+  const el = document.getElementById('gio-extrange');
+  if (el) el.textContent = n === 1
+    ? `→ est. #${firstId}`
+    : `→ est. #${firstId} … #${firstId + n - 1}`;
+}
+
+// Auto-valida tutte le giocate pending per cui l'estrazione è ora disponibile
+function autoValidatePending() {
+  loadGiocate();
+  let count = 0;
+
+  // Oggi: la data dell'estrazione più recente caricata
+  const todayKey = draws.length ? draws[0].dateKey : null;
+
+  giocate.forEach(g => {
+    if (g.stato !== 'pending' || !g.extId) return;
+
+    // Cerca SOLO tra le estrazioni di oggi (stessa data della giocata o più recente)
+    // e con ID strettamente maggiore di lastKnownId
+    const minId = g.lastKnownId || 0;
+    const gDateKey = g.lastKnownDateKey || todayKey; // data al momento della giocata
+
+    const draw = draws.find(d =>
+      d.id === g.extId &&
+      d.id > minId &&
+      (d.dateKey === gDateKey || d.dateKey === todayKey) // stessa giornata
+    );
+
+    if (!draw) return;
+    validateGiocata(g, draw);
+    count++;
+  });
+
+  if (count > 0) {
+    saveGiocate();
+    renderGiocate(); // aggiorna UI
+  }
+  return count;
+}
+
+// Toast di notifica vincite
+function showValidationToast(count) {
+  loadGiocate();
+  const newlyVal = giocate.filter(g => g.stato === 'validata');
+  const wins     = newlyVal.filter(g => g.win > 0).slice(0, count);
+  const totWin   = giocate.filter(g=>g.stato==='validata').slice(0,count).reduce((s,g)=>s+g.win,0);
+
+  // Crea toast
+  const toast = document.createElement('div');
+  toast.style.cssText = `
+    position:fixed;bottom:20px;right:20px;z-index:9999;
+    background:var(--card);border:.5px solid var(--border);
+    border-radius:12px;padding:14px 18px;box-shadow:0 4px 20px rgba(0,0,0,.15);
+    max-width:320px;font-size:13px;animation:slideIn .3s ease;
+  `;
+
+  const style = document.createElement('style');
+  style.textContent = '@keyframes slideIn{from{transform:translateX(100%);opacity:0}to{transform:none;opacity:1}}';
+  document.head.appendChild(style);
+
+  const hasWin = wins.length > 0;
+  toast.innerHTML = `
+    <div style="font-weight:600;margin-bottom:6px;color:${hasWin?'var(--grn)':'var(--text)'}">
+      ${hasWin ? '🎉 Vincita!' : '📋'} ${count} giocata${count>1?'e':''} validata${count>1?'e':''}
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:8px">
+      ${hasWin
+        ? `Totale vinto: <strong style="color:var(--grn)">${fmtEur(wins.reduce((s,g)=>s+g.win,0))}</strong>`
+        : 'Nessuna vincita questa volta.'}
+    </div>
+    ${wins.map(g=>`<div style="display:flex;gap:4px;align-items:center;margin-bottom:3px;font-size:11px">
+      <div style="display:flex;gap:2px">${g.nums.map(n=>`<span class="pill pb" style="font-size:10px;padding:1px 4px">${n}</span>`).join('')}</div>
+      <span style="color:var(--grn);font-weight:600">${fmtEur(g.win)}</span>
+    </div>`).join('')}
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
+      <button onclick="switchTab('giocate');this.closest('div[style*=fixed]').remove()" style="font-size:11px;padding:3px 10px">Vai a Giocate</button>
+      <button onclick="this.closest('div[style*=fixed]').remove()" style="font-size:11px;padding:3px 8px;color:var(--muted)">✕</button>
+    </div>`;
+
+  document.body.appendChild(toast);
+  // Auto-rimuovi dopo 8 secondi
+  setTimeout(() => { if (toast.parentNode) toast.remove(); }, 8000);
+}
+const GIOCATE_KEY = 'lotto_giocate_v1';
+let giocate = [];
+
+function loadGiocate() {
+  try {
+    const raw = localStorage.getItem(GIOCATE_KEY);
+    giocate = raw ? JSON.parse(raw) : [];
+  } catch(e) { giocate = []; }
+}
+
+function saveGiocate() {
+  try { localStorage.setItem(GIOCATE_KEY, JSON.stringify(giocate)); } catch(e) {}
+}
+
+// Aggiunge una giocata dalla UI manuale
+function addGiocata() {
+  const raw = document.getElementById('gio-nums').value.trim();
+  if (!raw) { alert('Inserisci i numeri'); return; }
+  const nums = raw.split(/[\s,]+/).map(Number).filter(n=>n>=1&&n<=90);
+  if (nums.length < 2) { alert('Almeno 2 numeri validi (1-90)'); return; }
+
+  const nEstrazioni = parseInt(document.getElementById('gio-nestraz').value) || 1;
+  const lastKnownId      = draws.length ? draws[0].id : 0;
+  const lastKnownDateKey = draws.length ? draws[0].dateKey : null;
+  const firstExtId       = lastKnownId + 1;
+
+  for (let i = 0; i < nEstrazioni; i++) {
+    const extId = firstExtId + i;
+    const g = {
+      id:               Date.now() + i,
+      ts:               new Date().toISOString(),
+      nums:             [...nums],
+      tipo:             document.getElementById('gio-tipo').value,
+      fonte:            document.getElementById('gio-fonte').value,
+      extId,
+      lastKnownId,
+      lastKnownDateKey,
+      extTotal:         nEstrazioni,
+      extSeq:           i + 1,
+      note:             document.getElementById('gio-note').value.trim(),
+      stato:            'pending',
+      hBase:[], hExtra:[], prizeBase:0, prizeExtra:0, win:0,
+    };
+    giocate.unshift(g);
+  }
+
+  saveGiocate();
+  document.getElementById('gio-nums').value = '';
+  document.getElementById('gio-note').value = '';
+  updateExtRange();
+  renderGiocate();
+  alert(`✅ Aggiunte ${nEstrazioni} giocata${nEstrazioni>1?'e':''} in attesa · est. #${firstExtId}${nEstrazioni>1?' → #'+(firstExtId+nEstrazioni-1):''}`)
+}
+
+// Aggiunge giocata da un altra sezione (Predizione, Cluster, ecc.)
+function addGiocataFromCombo(nums, fonte, note='', nEstrazioni=2) {
+  loadGiocate();
+  const lastKnownId      = draws.length ? draws[0].id : 0;
+  const lastKnownDateKey = draws.length ? draws[0].dateKey : null;
+  const firstExtId       = lastKnownId + 1;
+
+  for (let i = 0; i < nEstrazioni; i++) {
+    const extId = firstExtId + i;
+    const g = {
+      id:               Date.now() + i,
+      ts:               new Date().toISOString(),
+      nums:             [...nums],
+      tipo:             'virtuale',
+      fonte,
+      extId,
+      lastKnownId,
+      lastKnownDateKey,
+      extTotal:         nEstrazioni,
+      extSeq:           i + 1,
+      note,
+      stato:            'pending',
+      hBase:[], hExtra:[], prizeBase:0, prizeExtra:0, win:0,
+    };
+    // NON auto-valida — attende il prossimo aggiornamento
+    giocate.unshift(g);
+  }
+  saveGiocate();
+  alert(`✅ Aggiunta${nEstrazioni>1?'e '+nEstrazioni+' giocate':' 1 giocata'} [${nums.join('·')}] (${fonte})\nIn attesa di est. #${firstExtId}${nEstrazioni>1?' → #'+(firstExtId+nEstrazioni-1):''}`);
+}
+
+function validateGiocata(g, draw) {
+  g.hBase  = g.nums.filter(n => draw.base.includes(n));
+  g.hExtra = g.nums.filter(n => draw.extra.includes(n));
+  const p  = getPrize(g.nums.length, g.hBase.length, g.hExtra.length);
+  g.prizeBase  = p.base;
+  g.prizeExtra = p.extra;
+  g.win        = Math.max(p.base, p.extra);
+  g.stato      = 'validata';
+  g.drawData   = { id: draw.id, time: draw.time, date: draw.date };
+}
+
+function validatePending(gioId) {
+  const extId = parseInt(document.getElementById('val-ext-' + gioId).value);
+  if (!extId) { alert('Inserisci il numero estrazione'); return; }
+  const draw = draws.find(d => d.id === extId);
+  if (!draw) { alert('Estrazione #' + extId + ' non trovata nei dati caricati'); return; }
+  const g = giocate.find(x => x.id === gioId);
+  if (!g) return;
+  validateGiocata(g, draw);
+  saveGiocate();
+  renderGiocate();
+}
+
+function deleteGiocata(gioId) {
+  giocate = giocate.filter(g => g.id !== gioId);
+  saveGiocate();
+  renderGiocate();
+}
+
+function clearGiocate() {
+  giocate = [];
+  saveGiocate();
+  renderGiocate();
+}
+
+// ── RENDER ──
+function renderGiocate() {
+  loadGiocate();
+  document.getElementById('gio-count').textContent = giocate.length;
+
+  const pending   = giocate.filter(g => g.stato === 'pending');
+  const validated = giocate.filter(g => g.stato === 'validata');
+
+  // Pending
+  const pendBox = document.getElementById('gio-pending-box');
+  const pendList = document.getElementById('gio-pending-list');
+  pendBox.style.display = pending.length ? 'block' : 'none';
+  pendList.innerHTML = pending.map(g => `
+    <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:.5px solid var(--border);flex-wrap:wrap">
+      <div style="flex:1;min-width:200px">
+        <div style="display:flex;gap:3px;flex-wrap:wrap;margin-bottom:3px">
+          ${g.nums.map(n=>`<span class="pill pb">${n}</span>`).join('')}
+        </div>
+        <div style="font-size:11px;color:var(--muted)">${g.fonte} · ${g.tipo}${g.extTotal>1?' · est. '+g.extSeq+'/'+g.extTotal:''} · ${new Date(g.ts).toLocaleString('it-IT')} ${g.note?'· '+g.note:''}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;font-size:12px">
+        <span style="color:var(--muted)">Est. #</span>
+        <input type="number" id="val-ext-${g.id}" value="${g.extId||''}" placeholder="ID estrazione" style="width:80px;font-size:12px">
+        <button class="pri" onclick="validatePending(${g.id})" style="font-size:12px;padding:4px 10px">✓ Valida</button>
+        <button onclick="deleteGiocata(${g.id})" style="font-size:12px;padding:4px 8px;color:var(--red)">✕</button>
+      </div>
+    </div>`).join('');
+
+  // Analisi
+  const anaBox = document.getElementById('gio-analysis-box');
+  if (validated.length >= 3) {
+    anaBox.style.display = 'block';
+    renderAnalysis(validated);
+  } else {
+    anaBox.style.display = 'none';
+  }
+
+  // Storico completo
+  const list = document.getElementById('gio-list');
+  if (!giocate.length) {
+    list.innerHTML = '<p style="font-size:13px;color:var(--muted)">Nessuna giocata registrata.</p>';
+    return;
+  }
+  list.innerHTML = `
+    <table style="width:100%;border-collapse:collapse;font-size:12px">
+      <thead><tr>
+        <th style="text-align:left;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--muted)">Data</th>
+        <th style="padding:6px 8px;border-bottom:1px solid var(--border);color:var(--muted)">Numeri</th>
+        <th style="padding:6px 8px;border-bottom:1px solid var(--border);color:var(--muted)">Fonte</th>
+        <th style="padding:6px 8px;border-bottom:1px solid var(--border);color:var(--muted)">Tipo</th>
+        <th style="padding:6px 8px;border-bottom:1px solid var(--border);color:var(--muted)">Est.</th>
+        <th style="padding:6px 8px;border-bottom:1px solid var(--border);color:var(--muted)">Base ✓</th>
+        <th style="padding:6px 8px;border-bottom:1px solid var(--border);color:var(--muted)">Extra ✓</th>
+        <th style="padding:6px 8px;border-bottom:1px solid var(--border);color:var(--muted)">Vincita</th>
+        <th style="padding:6px 8px;border-bottom:1px solid var(--border);color:var(--muted)"></th>
+      </tr></thead>
+      <tbody>
+        ${giocate.map(g => {
+          const valida = g.stato==='validata';
+          const wCls   = g.win>0?(g.win>=1000?'w3':g.win>=100?'w2':'w1'):'w0';
+          return `<tr style="${g.win>0?'background:rgba(26,158,110,0.05)':''}">
+            <td style="padding:5px 8px;border-bottom:.5px solid var(--border);white-space:nowrap;color:var(--muted)">${new Date(g.ts).toLocaleString('it-IT',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</td>
+            <td style="padding:5px 8px;border-bottom:.5px solid var(--border)">
+              <div style="display:flex;gap:2px;flex-wrap:wrap">${g.nums.map(n=>`<span class="pill pb" style="font-size:10px;padding:1px 4px">${n}</span>`).join('')}</div>
+            </td>
+            <td style="padding:5px 8px;border-bottom:.5px solid var(--border);color:var(--muted)">${g.fonte}</td>
+            <td style="padding:5px 8px;border-bottom:.5px solid var(--border)">
+              <span class="pill ${g.tipo==='reale'?'pb':'pe'}" style="font-size:10px">${g.tipo}</span>
+            </td>
+            <td style="padding:5px 8px;border-bottom:.5px solid var(--border);color:var(--muted)">${g.extId||'—'}</td>
+            <td style="padding:5px 8px;border-bottom:.5px solid var(--border)">
+              ${valida?(g.hBase.length?g.hBase.map(n=>`<span class="pill pb" style="font-size:10px;padding:1px 4px">${n}</span>`).join(''):'—'):'⏳'}
+            </td>
+            <td style="padding:5px 8px;border-bottom:.5px solid var(--border)">
+              ${valida?(g.hExtra.length?g.hExtra.map(n=>`<span class="pill pe" style="font-size:10px;padding:1px 4px">${n}</span>`).join(''):'—'):'⏳'}
+            </td>
+            <td style="padding:5px 8px;border-bottom:.5px solid var(--border)" class="${wCls}">
+              ${valida?fmtEur(g.win):'⏳'}
+            </td>
+            <td style="padding:5px 8px;border-bottom:.5px solid var(--border)">
+              <button onclick="deleteGiocata(${g.id})" style="font-size:11px;padding:2px 6px;color:var(--red)">✕</button>
+            </td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>`;
+}
+
+function renderAnalysis(validated) {
+  const totWin    = validated.reduce((s,g)=>s+g.win,0);
+  const totReal   = validated.filter(g=>g.tipo==='reale');
+  const totVirt   = validated.filter(g=>g.tipo==='virtuale');
+  const winCount  = validated.filter(g=>g.win>0).length;
+  const winRate   = Math.round(winCount/validated.length*100);
+
+  // Per fonte
+  const byFonte = {};
+  validated.forEach(g=>{
+    if(!byFonte[g.fonte]) byFonte[g.fonte]={count:0,win:0,winCount:0};
+    byFonte[g.fonte].count++;
+    byFonte[g.fonte].win+=g.win;
+    if(g.win>0) byFonte[g.fonte].winCount++;
+  });
+
+  // Sequenze perdita
+  let maxLoss=0, curLoss=0;
+  [...validated].reverse().forEach(g=>{
+    if(g.win===0){curLoss++;maxLoss=Math.max(maxLoss,curLoss);}
+    else curLoss=0;
+  });
+
+  // ROI (solo reali)
+  const realCost = totReal.length; // 1€ per giocata (approssimazione)
+  const realWin  = totReal.reduce((s,g)=>s+g.win,0);
+
+  document.getElementById('gio-analysis').innerHTML = `
+    <div class="scards" style="margin-bottom:14px">
+      <div class="sc"><div class="lb">Totale vinto</div><div class="vl" style="color:var(--acc)">${fmtEur(totWin)}</div></div>
+      <div class="sc"><div class="lb">Tasso vincita</div><div class="vl">${winRate}%</div></div>
+      <div class="sc"><div class="lb">Max perdite consecutive</div><div class="vl" style="color:${maxLoss>10?'var(--red)':maxLoss>5?'var(--amb)':'var(--muted)'}">${maxLoss}</div></div>
+      <div class="sc"><div class="lb">Reali / Virtuali</div><div class="vl" style="font-size:16px">${totReal.length} / ${totVirt.length}</div></div>
+    </div>
+
+    <div style="font-size:12px;color:var(--muted);margin-bottom:6px">Performance per fonte:</div>
+    <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:14px">
+      ${Object.entries(byFonte).sort((a,b)=>b[1].win-a[1].win).map(([f,v])=>`
+        <div style="display:flex;align-items:center;gap:10px;padding:7px 12px;background:var(--bg);border-radius:var(--r);font-size:12px">
+          <div style="width:90px;font-weight:500">${f}</div>
+          <div style="color:var(--muted)">${v.count} giocate</div>
+          <div style="color:var(--grn)">Win: ${Math.round(v.winCount/v.count*100)}%</div>
+          <div style="color:var(--acc);font-weight:600">${fmtEur(v.win)}</div>
+          <div style="color:var(--muted);font-size:11px">${fmtEur(Math.round(v.win/v.count))}/giocata</div>
+        </div>`).join('')}
+    </div>
+
+    ${maxLoss>5?`<div style="font-size:12px;padding:8px 12px;background:var(--red-bg);border-radius:var(--r);color:var(--red);margin-bottom:10px">
+      ⚠️ <strong>Pattern identificato:</strong> hai avuto ${maxLoss} perdite consecutive — potresti star usando la stessa fonte/strategia in modo ripetuto senza successo. Cambia approccio o pausa.
+    </div>`:''}`;
+}
+
+// ── EXPORT / IMPORT CSV ──
+function exportCSV() {
+  loadGiocate();
+  if (!giocate.length) { alert('Nessuna giocata da esportare'); return; }
+  const header = 'id,data,numeri,tipo,fonte,est_id,stato,base_vinti,extra_vinti,vincita,note';
+  const rows = giocate.map(g =>
+    [g.id, new Date(g.ts).toLocaleString('it-IT'), '"'+g.nums.join(' ')+ '"',
+     g.tipo, g.fonte, g.extId||'', g.stato,
+     '"'+(g.hBase||[]).join(' ')+'"', '"'+(g.hExtra||[]).join(' ')+'"',
+     g.win, '"'+(g.note||'')+'"'].join(',')
+  );
+  const csv = [header, ...rows].join('\n');
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `giocate_10elotto_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+}
+
+function importCSV(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const lines = e.target.result.split('\n').slice(1).filter(l=>l.trim());
+    let imported = 0;
+    lines.forEach(line => {
+      const cols = line.match(/(".*?"|[^,]+)(?=,|$)/g)||[];
+      const clean = cols.map(c=>c.replace(/^"|"$/g,'').trim());
+      if (clean.length < 10) return;
+      const nums = clean[2].split(/\s+/).map(Number).filter(n=>n>=1&&n<=90);
+      if (!nums.length) return;
+      const g = {
+        id:         parseInt(clean[0])||Date.now()+imported,
+        ts:         new Date().toISOString(),
+        nums,
+        tipo:       clean[3]||'virtuale',
+        fonte:      clean[4]||'manuale',
+        extId:      parseInt(clean[5])||null,
+        stato:      clean[6]||'pending',
+        hBase:      clean[7]?clean[7].split(/\s+/).map(Number).filter(Boolean):[],
+        hExtra:     clean[8]?clean[8].split(/\s+/).map(Number).filter(Boolean):[],
+        win:        parseFloat(clean[9])||0,
+        note:       clean[10]||'',
+        prizeBase:  0, prizeExtra:0,
+      };
+      if (!giocate.find(x=>x.id===g.id)) { giocate.push(g); imported++; }
+    });
+    giocate.sort((a,b)=>b.id-a.id);
+    saveGiocate();
+    renderGiocate();
+    alert(`Importate ${imported} giocate`);
+  };
+  reader.readAsText(file);
+  input.value = '';
+}
+
 /* ── BOOT (build picker grid on predict tab open) ── */
 window.addEventListener('load', () => {
+  loadGiocate();
   dbgLog('Pronto. Premi ↻ Aggiorna per caricare le estrazioni.');
 });
 </script>
